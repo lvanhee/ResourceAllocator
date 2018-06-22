@@ -58,17 +58,47 @@ public class Main {
 	{
 		private final Map<Allocation, Double> rawPreferencePerAllocation;
 		private final Map<String, String> pairsOfUsers;
-		private final int numberOfUsersPerResource;
+		private final int minNbUsersPerResource;
+		private final int maxNbUsersPerResource;
+		
+		private final Map<Allocation, Integer> exhaustivePrefsPerAllocation;
+		
 		private InputFormat(
 				Map<Allocation, Double> baseValues,
 				Map<String, String> usersPairs,
-				int numberOfUsersPerResource) {
+				int numberOfUsersPerResource,
+				int maxNbUsersPerResource
+				) {
 			this.rawPreferencePerAllocation = baseValues;
 			this.pairsOfUsers = usersPairs;
-			this.numberOfUsersPerResource = numberOfUsersPerResource;
+			this.minNbUsersPerResource = numberOfUsersPerResource;
+			this.maxNbUsersPerResource = maxNbUsersPerResource;
+			 exhaustivePrefsPerAllocation = 
+						fromPosNegToPreferences(rawPreferencePerAllocation);
 		}
 		public Map<Allocation, Double> getRawAllocations() {
 			return rawPreferencePerAllocation;
+		}
+		public int getMaxNbUsersPerResource() {
+			return maxNbUsersPerResource;
+		}
+		public int getMinNumUsersPerResource() {
+			return minNbUsersPerResource;
+		}
+		public Set<String> getResources() {
+			return 
+					exhaustivePrefsPerAllocation.keySet()
+					.stream()
+					.map(x->x.resource)
+					.collect(Collectors.toSet());
+		}
+		public Map<Allocation, Integer> getExhaustiveAllocations() {
+			return exhaustivePrefsPerAllocation;
+		}
+		
+		//not implemented
+		public Set<Allocation> getHardConstraints() {
+			return new HashSet();
 		}
 	}
 
@@ -107,34 +137,7 @@ public class Main {
 		
 		InputFormat input = initPrefs(args[0]);
 		
-		Map<Allocation, Integer> exhaustivePrefsPerAllocation = 
-				fromPosNegToPreferences(input.getRawAllocations()
-						);
-		
-		
-		
-		Set<String> users = 
-				exhaustivePrefsPerAllocation
-				.keySet()
-				.stream()
-				.map(x->x.receiver)
-				.collect(Collectors.toSet());
-		
-		Set<String> resources = 
-				exhaustivePrefsPerAllocation.keySet()
-				.stream()
-				.map(x->x.resource)
-				.collect(Collectors.toSet());
-		if(users.size() > resources.size()*input.numberOfUsersPerResource) 
-			throw new Error("Some requesters cannot be satisfied, not enough resources");
-
-		
-		displayStats(resources, exhaustivePrefsPerAllocation);
-
-	
-		
-		//sometimes hard constraints are useful
-		Set<Allocation> hardConstraints = new HashSet<>();
+		displayStats(input);
 
 		Optional<Set<Allocation>> res = Optional.empty();
 		int worseCase = 0;
@@ -145,19 +148,27 @@ public class Main {
 			
 
 			res= optimizeAccordingToMaxInsatisfaction(
-					exhaustivePrefsPerAllocation,
-					hardConstraints, 
 					worseCase,
-					input.pairsOfUsers,
-					input.numberOfUsersPerResource,
 					input);
 		}
+		
+		processResults(res.get(), input);
 
+		
+			
+			
+	}
+
+	private static void processResults(Set<Allocation>res, 
+		InputFormat inF
+			) {
 		List<Allocation> sortedList = new LinkedList<>();
-		sortedList.addAll(res.get());
+		sortedList.addAll(res);
 		sortedList.sort((x,y)-> x.receiver.compareTo(y.receiver));
+		
 		for(Allocation a:sortedList)
-			System.out.println(a+" rank:"+exhaustivePrefsPerAllocation.get(a));
+			System.out.println(a+" rank:"+
+		inF.getExhaustiveAllocations().get(a));
 		
 		System.out.println("\n\n");
 		
@@ -180,11 +191,12 @@ public class Main {
 		
 		for(String s: usersPerResources.keySet())
 			System.out.println(s+"->"+usersPerResources.get(s));
-			
-			
 	}
 
-	private static void displayStats(Set<String> resources, Map<Allocation, Integer> exhaustivePrefsPerAllocation) {
+	private static void displayStats(InputFormat inF) {
+		
+		
+		
 		System.out.println("Cumulative ranking per resource:"
 				+ "(the third number corresponds to the number of users that "
 				+ "rank this resource within its top three)");
@@ -192,21 +204,21 @@ public class Main {
 		System.out.println("Resources with high values for lower index are on high demand and thus likely to cause regret");
 		
 		Map<String, List<Long>> rankPerProject = 
-				resources
+				inF.getResources()
 				.stream()
 				.collect(
 						Collectors.toMap(x->x, 
 								x->new LinkedList()));
 		
-		for(int i = 0 ; i < resources.size();i++)
-			for(String resource:resources)
+		for(int i = 0 ; i < inF.getResources().size();i++)
+			for(String resource:inF.getResources())
 			{
 				final int temp = i;
-				long count = exhaustivePrefsPerAllocation
+				long count = inF.getExhaustiveAllocations()
 						.keySet()
 						.stream()
 						.filter(x->x.resource.equals(resource))
-						.filter(x->exhaustivePrefsPerAllocation.get(x)<=temp)
+						.filter(x->inF.getExhaustiveAllocations().get(x)<=temp)
 						.count();
 				
 			/*	System.out.println(exhaustivePrefsPerAllocation
@@ -219,7 +231,7 @@ public class Main {
 			}
 		
 		List<String> sortedResourceList = new LinkedList<>();
-		sortedResourceList.addAll(resources);
+		sortedResourceList.addAll(inF.getResources());
 		Collections.sort(sortedResourceList);
 		for(String resource: sortedResourceList)
 		{
@@ -232,10 +244,7 @@ public class Main {
 	}
 
 	private static Optional<Set<Allocation>> optimizeAccordingToMaxInsatisfaction(
-			Map<Allocation, Integer> prefsPerAllocation,
-			Set<Allocation> hardConstraints, int maxInsatisfaction, 
-			Map<String, String> pairsOfUsers,
-			int nbOfUsersPerResources,
+			int maxInsatisfaction,
 			InputFormat inF)
 	{
 
@@ -243,36 +252,69 @@ public class Main {
 			IloCplex cplex = new IloCplex();
 			cplex.setOut(null);
 			
-			Set<Allocation> allowedAllocations = 
-					prefsPerAllocation.keySet().stream().filter(x->prefsPerAllocation.get(x)<=maxInsatisfaction).collect(Collectors.toSet());
+			Set<Allocation> consideredAllocations = 
+					inF.getExhaustiveAllocations().keySet().stream().filter(
+							x->inF.getExhaustiveAllocations().get(x)<=maxInsatisfaction).collect(Collectors.toSet());
 
 			SortedSet<String> users = new TreeSet<>();
 			users.addAll(
-					allowedAllocations.stream().map(x->x.receiver).collect(Collectors.toSet()));
+					consideredAllocations.stream().map(x->x.receiver).collect(Collectors.toSet()));
 
 			SortedSet<String> resources = new TreeSet<>();
 			resources.addAll(
-					allowedAllocations.stream().map(x->x.resource).collect(Collectors.toSet()));
+					consideredAllocations.stream().map(x->x.resource).collect(Collectors.toSet()));
 			
-			Map<Allocation, IloNumVar> varPerAlloc = generateVariablePerAllocation(cplex,
-					allowedAllocations
+			Map<Allocation, IloNumVar> allocToVar = 
+					generateVariablePerAllocation(cplex,
+					consideredAllocations
 					);
+			
+			Map<String, IloIntVar> isAllocatedResourceVars = 
+					resources.stream().collect(
+							Collectors.toMap(Function.identity(),
+									x->
+									{
+										try {
+											return cplex.boolVar("isAllocated("+x+")"
+													);
+										} catch (IloException e) {
+											e.printStackTrace();
+											throw new Error();
+										}
+									}));
+			
+			Map<String, IloIntVar> resourceMinLiftingJokerVars = 
+					resources.stream().collect(
+							Collectors.toMap(Function.identity(),
+									x->
+									{
+										try {
+											return cplex
+													.boolVar("jokerForDiscardingTheMinAllocationConstraint("+x+")"
+													);
+										} catch (IloException e) {
+											// TODO Auto-generated catch block
+											e.printStackTrace();
+											throw new Error();
+										}
+									}));
 
 			for(String pl:users)
 			{
 				int worseAllocValue = 1;
-				if(allowedAllocations.stream()
+				if(consideredAllocations.stream()
 						.anyMatch(x-> x.receiver.equals(pl)))
 				{
-					Allocation worseAlloc = allowedAllocations.stream()
+					Allocation worseAlloc = consideredAllocations.stream()
 							.filter(x-> x.receiver.equals(pl))
-							.max((x,y)->prefsPerAllocation.get(x)-prefsPerAllocation.get(y)).get();
-					worseAllocValue = prefsPerAllocation.get(worseAlloc);
+							.max((x,y)->inF.getExhaustiveAllocations().get(x)-
+									inF.getExhaustiveAllocations().get(y)).get();
+					worseAllocValue = inF.getExhaustiveAllocations().get(worseAlloc);
 				}
 
-				for(Allocation a: allowedAllocations)
-					if(!allowedAllocations.contains(a) && a.receiver.equals(pl))
-						prefsPerAllocation.put(a, worseAllocValue+1);
+				for(Allocation a: consideredAllocations)
+					if(!consideredAllocations.contains(a) && a.receiver.equals(pl))
+						inF.getExhaustiveAllocations().put(a, worseAllocValue+1);
 			}
 			
 
@@ -280,23 +322,22 @@ public class Main {
 			cplex.addMinimize(
 					getExpressionToMinimize(
 							cplex, 
-							allowedAllocations,
+							consideredAllocations,
 							users,
-							prefsPerAllocation,
-							varPerAlloc));
+							inF.getExhaustiveAllocations(),
+							allocToVar));
 			
-			generateAllocationConstraints(cplex,
-					allowedAllocations,
-					varPerAlloc,
-					nbOfUsersPerResources,
-					inF,
-					resources
-					
+			generateAllocationConstraints(
+					cplex,
+					consideredAllocations,
+					resources,
+					allocToVar,
+					isAllocatedResourceVars,
+					resourceMinLiftingJokerVars,
+					inF
 					);
 			
-			generateHardAllocationsConstraints(cplex, varPerAlloc, hardConstraints);
-
-
+			generateHardAllocationsConstraints(cplex, allocToVar, inF.getHardConstraints());
 
 			cplex.exportModel("mipex1.lp");
 
@@ -304,13 +345,13 @@ public class Main {
 				return Optional.empty();
 			System.out.println("Solution status = " + cplex.getStatus());
 			Set<Allocation>s=
-					processCplexResults(cplex, varPerAlloc);
+					processCplexResults(cplex, allocToVar);
 			
 			
 
 			//s.sort((x,y)->roles.indexOf(x.role) - roles.indexOf(y.role));
 			System.out.println("Minimizing the number of least happy people:");
-			printOutput(s,prefsPerAllocation);
+			printOutput(s,inF.getExhaustiveAllocations());
 			cplex.end();
 			
 			return Optional.of(s);
@@ -490,12 +531,14 @@ public class Main {
 		return varPerAlloc;
 	}
 
-	private static void generateAllocationConstraints(IloCplex cplex, 
-			Collection<Allocation> allocations, 
+	private static void generateAllocationConstraints(
+			IloCplex cplex, 
+			Set<Allocation> allocations, 
+			SortedSet<String> resources,
 			Map<Allocation, IloNumVar> varPerAlloc,
-			int nbOfUsersPerResources,
-			InputFormat inF,
-			SortedSet<String> resources
+			Map<String, IloIntVar> allocatedResourceVar,
+			Map<String, IloIntVar> allocationJoker,
+			InputFormat inF
 			) 
 					throws IloException{
 		
@@ -503,38 +546,147 @@ public class Main {
 				.map(x->x.receiver)
 				.collect(Collectors.toSet()))
 		{
-			IloNumExpr oneRolePerPlayer = cplex.constant(0);
+			IloNumExpr oneResourcePerUser = 
+					cplex.constant(0);
 			for(String s: allocations
 					.stream()
 					.filter(x->x.receiver.equals(pl))
 					.map(x->x.resource)
 					.collect(Collectors.toList()))
 			{
-				oneRolePerPlayer = cplex.sum(
-						oneRolePerPlayer, varPerAlloc.get(new Allocation(pl, s)));
+				oneResourcePerUser = 
+						cplex.sum(
+						oneResourcePerUser,
+						varPerAlloc.get(new Allocation(pl, s)));
 			}
 			cplex.addEq(
 					1,
-					oneRolePerPlayer,
-					"EachReiverIsGivenExactlyOneItem("+pl+")");
+					oneResourcePerUser,
+					"EachUserIsGivenExactlyOneResource("+pl+")");
 		}
 
-		for(String ro: allocations.stream()
-				.map(x->x.resource)
-				.collect(Collectors.toSet()))
+		for(String resource: resources)
 		{
-			IloNumExpr onePlayerPerRole = cplex.constant(0);
+			IloNumExpr maxKUsersPerResource = cplex.constant(0);
 			for(String s: allocations
 					.stream()
-					.filter(x->x.resource.equals(ro))
+					.filter(x->x.resource.equals(resource))
 					.map(x->x.receiver)
 					.collect(Collectors.toList()))
 			{
-				onePlayerPerRole = cplex.sum(
-						onePlayerPerRole, varPerAlloc.get(new Allocation(s, ro)));
+				maxKUsersPerResource = cplex.sum(
+						maxKUsersPerResource, varPerAlloc.get(new Allocation(s, resource)));
 			}
-			cplex.addGe(nbOfUsersPerResources, onePlayerPerRole, "EachItemIsGivenAtMostKTimes("+ro+","+nbOfUsersPerResources+")");
+			cplex.addGe(
+					inF.getMaxNbUsersPerResource(), 
+					maxKUsersPerResource, 
+					"EachResourceIsAllocatedAtMostKTimes("+resource+","+
+					inF.getMaxNbUsersPerResource()+")");
 		}
+		
+		for(Allocation a:allocations)
+		{
+			cplex.addGe(
+					allocatedResourceVar.get(a.resource),
+					varPerAlloc.get(a),
+					"CountsAsAllocatedIfAllocatedFor("+a.resource+","+a+")");
+		}	
+		
+		for(String resource: resources)
+		{
+			IloNumExpr countUsersPerResource = cplex.constant(0);
+			for(String s: allocations
+					.stream()
+					.filter(x->x.resource.equals(resource))
+					.map(x->x.receiver)
+					.collect(Collectors.toList()))
+			{
+				countUsersPerResource = cplex.sum(
+						countUsersPerResource, varPerAlloc.get(new Allocation(s, resource)));
+			}
+			
+			//if the resource is not allocated, then the minimum is zero
+			countUsersPerResource = cplex.sum(
+					countUsersPerResource,
+					cplex.prod(-inF.getMaxNbUsersPerResource(),
+							allocatedResourceVar.get(resource)));
+			
+			countUsersPerResource = cplex.sum(
+					countUsersPerResource,
+					cplex.prod(-inF.getMaxNbUsersPerResource(),
+							allocationJoker.get(resource)));
+					
+			cplex.addLe(
+					countUsersPerResource,
+					0, 
+					"EachNonAllocatedResourceIsAllocatedAtMost0TimesUnlessTheJokerIsUsed("+resource+")");
+		}
+		
+		for(String resource: resources)
+		{
+			IloNumExpr countUsersPerResource = cplex.constant(0);
+			for(String s: allocations
+					.stream()
+					.filter(x->x.resource.equals(resource))
+					.map(x->x.receiver)
+					.collect(Collectors.toList()))
+			{
+				countUsersPerResource = cplex.sum(
+						countUsersPerResource, varPerAlloc.get(new Allocation(s, resource)));
+			}
+			
+			//if the resource is not allocated, then the minimum is zero
+			countUsersPerResource = cplex.sum(
+					countUsersPerResource,
+					cplex.prod(-inF.getMinNumUsersPerResource(),
+							allocatedResourceVar.get(resource)));
+			
+			countUsersPerResource = cplex.sum(
+					countUsersPerResource,
+					cplex.prod(inF.getMinNumUsersPerResource(),
+							allocationJoker.get(resource)));
+					
+			cplex.addGe(
+					countUsersPerResource,
+					0, 
+					"EachAllocatedResourceMustBeAllocatedAtLeastKTimesUnlessTheJokerIsUsed("+resource+")");
+		}
+		
+		
+		IloNumExpr allJokers = cplex.constant(0);
+		for(IloIntVar joker: allocationJoker.values())
+			allJokers = cplex.sum(allJokers, joker);
+		cplex.addLe(allJokers, 1,
+				"AtMostOneJoker");
+		
+		for(String resource: resources)
+		{
+			IloNumExpr countUsersPerResource = cplex.constant(0);
+			for(String s: allocations
+					.stream()
+					.filter(x->x.resource.equals(resource))
+					.map(x->x.receiver)
+					.collect(Collectors.toList()))
+			{
+				countUsersPerResource = cplex.sum(
+						countUsersPerResource, varPerAlloc.get(new Allocation(s, resource)));
+			}
+			
+			//if the resource is not allocated, then the minimum is zero
+			countUsersPerResource = cplex.sum(
+					countUsersPerResource,
+					cplex.prod(-inF.getMinNumUsersPerResource(),
+							allocatedResourceVar.get(resource)));
+					
+			cplex.addGe(
+					0, 
+					countUsersPerResource, 
+					"EachAllocatedResourceIsAllocatedAtLeastKTimes("
+					+resource+","+inF.getMinNumUsersPerResource()+")");
+		}
+		
+		
+
 
 		//ensure pairs
 		for(String user1: inF.pairsOfUsers.keySet())
@@ -554,15 +706,17 @@ public class Main {
 				IloNumExpr exprUser2PicksR =
 						varPerAlloc.get(u2PicksR);
 				
-				cplex.addEq(exprUser1PicksR, exprUser2PicksR,
+				cplex.addEq(exprUser1PicksR, 
+						exprUser2PicksR,
 						"PairedUsersMatchTheirDecisions("
 						+user1+","
 						+user2+","+
 						resource+")");
 			}
 		
+		
 		//ensure adequate resource consumption
-		for(String resource:resources)
+		/*for(String resource:resources)
 		{
 			IloIntVar usingRKTimes = cplex.boolVar();
 			IloNumExpr total = cplex.prod(usingRKTimes, inF.numberOfUsersPerResource);
@@ -574,7 +728,7 @@ public class Main {
 				total = cplex.sum(total, varPerAlloc.get(a));
 			}
 			cplex.addEq(total, inF.numberOfUsersPerResource, "FullAllocationOfResource("+resource+")");
-		}
+		}*/
 		
 		
 	}
@@ -634,9 +788,27 @@ public class Main {
 		int nbUsersPerResource = 1;
 		if(byPair)
 			nbUsersPerResource = 2;
-		return new InputFormat(baseValues, usersPairs, nbUsersPerResource);
+		
+		InputFormat res = new InputFormat(baseValues, usersPairs, nbUsersPerResource,nbUsersPerResource);
+		
+		checkCoherenceOf(res);
+		return res;
 	}
 	
+	private static void checkCoherenceOf(InputFormat res) {
+		Set<String> users = 
+				res.getExhaustiveAllocations()
+				.keySet()
+				.stream()
+				.map(x->x.receiver)
+				.collect(Collectors.toSet());
+		
+
+		
+		if(users.size() > res.getResources().size()*res.minNbUsersPerResource) 
+			throw new Error("Some requesters cannot be satisfied, not enough resources");
+	}
+
 	private static Map<Allocation,Integer> fromPosNegToPreferences(
 			Map<Allocation, Double> 
 			baseValues)
