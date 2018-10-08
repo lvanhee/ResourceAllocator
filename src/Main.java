@@ -746,6 +746,9 @@ public class Main {
 				String[] split = s.split(";");
 				Allocation newAlloc = new Allocation(split[1], split[0]);
 				
+				if(newAlloc.receiver.equals("030"))
+					System.out.println();
+				
 				Optional<Allocation>secondAlloc = Optional.empty();
 				if(split.length==4)
 				{
@@ -763,7 +766,7 @@ public class Main {
 				
 				if(baseValues.containsKey(newAlloc))
 					throw new IllegalArgumentException(
-							"Each allocation should be associated a score once, but"
+							"Each allocation should be associated a score once, but "
 							+ "the allocation:"+newAlloc+" is assigned a score at least twice!");
 				baseValues.put(newAlloc,associatedValue);
 				
@@ -796,17 +799,20 @@ public class Main {
 	}
 	
 	private static void checkCoherenceOf(InputFormat res) {
-		Set<String> users = 
-				res.getExhaustiveAllocations()
-				.keySet()
-				.stream()
-				.map(x->x.receiver)
-				.collect(Collectors.toSet());
+		Set<String> users = new HashSet();
+		
+		for(Allocation a: res.getExhaustiveAllocations().keySet())
+		{
+
+			users.add(a.receiver);
+		}
 		
 
 		
-		if(users.size() > res.getResources().size()*res.minNbUsersPerResource) 
-			throw new Error("Some requesters cannot be satisfied, not enough resources");
+		if(users.size() > res.getResources().size()*res.maxNbUsersPerResource) 
+			throw new Error("Some requesters cannot be satisfied, not enough resources. #requesters="+users.size()
+			+", #resources="+res.getResources().size()*res.minNbUsersPerResource+"(resources names:"+res.getResources().size()+" x userPerResource:"+res.maxNbUsersPerResource+")"
+			+"\n" +users+"\n"+res.getResources());
 	}
 
 	private static Map<Allocation,Integer> fromPosNegToPreferences(
