@@ -2,11 +2,13 @@ package input;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import model.Resource;
+import model.ResourceProvider;
 import model.User;
 import model.UserAllocation;
 import model.UserGroup;
@@ -16,26 +18,35 @@ public class InputFormat {
 	private final int maxNbUsersPerResource;
 	private final Map<UserAllocation, Integer> absolutePrefsPerAllocation;
 	private final Set<UserGroup> userGroups;
+	private final Map<Resource, ResourceProvider> providerPerResource;
 	
 	private InputFormat(
 			Map<UserAllocation, Double> baseValues,
 			int numberOfUsersPerResource,
 			int maxNbUsersPerResource,
-			Set<UserGroup> userGroups
+			Set<UserGroup> userGroups,
+			Map<Resource, ResourceProvider> providerPerResource
 			) {
 		this.minNbUsersPerResource = numberOfUsersPerResource;
 		this.maxNbUsersPerResource = maxNbUsersPerResource;
 		 absolutePrefsPerAllocation = 
 					toRelativePreferences(baseValues);
 		 this.userGroups = userGroups;
+		 this.providerPerResource = providerPerResource;
 	}
 	
 	public static InputFormat newInstance(Map<UserAllocation, Double> baseValues,
 			int numberOfUsersPerResource,
 			int maxNbUsersPerResource,
-			Set<UserGroup> groups)
+			Set<UserGroup> groups, 
+			Map<Resource, ResourceProvider> providerPerResource)
 	{
-		return new InputFormat(baseValues, numberOfUsersPerResource, maxNbUsersPerResource, groups);
+		return new InputFormat(
+				baseValues,
+				numberOfUsersPerResource,
+				maxNbUsersPerResource, 
+				groups,
+				providerPerResource);
 	}
 	
 	public int getMaxNbUsersPerResource() {
@@ -165,6 +176,22 @@ public class InputFormat {
 		return 
 				absolutePrefsPerAllocation.keySet().stream()
 				.filter(x->x.getResource().equals(resource))
+				.collect(Collectors.toSet());
+	}
+
+	public ResourceProvider getOwner(Resource r) {
+		return providerPerResource.get(r);
+	}
+
+	public Set<ResourceProvider> getAllResourceOwners() {
+		return providerPerResource.values()
+				.stream()
+				.collect(Collectors.toSet());
+	}
+
+	public Set<Resource> getResourcesFrom(ResourceProvider rp) {
+		return providerPerResource.keySet()
+				.stream().filter(x->providerPerResource.get(x).equals(rp))
 				.collect(Collectors.toSet());
 	}
 }
