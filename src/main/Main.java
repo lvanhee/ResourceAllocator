@@ -150,7 +150,20 @@ public class Main {
 									x->inF.
 									getExhaustiveAllocations().get(UserAllocation.newInstance(x,s)))
 							);
-			System.out.println(s+"->"+satisfactionPerUser+
+			
+			Set<UserGroup>involvedGroups = 
+					satisfactionPerUser.keySet().stream()
+					.map(x->inF.getUserGroupOf(x))
+					.collect(Collectors.toSet());
+
+			Map<UserGroup, Integer> satisfactionPerGroup = 
+					involvedGroups.stream()
+					.collect(
+							Collectors.toMap(Function.identity(), 
+									x->
+							satisfactionPerUser.get(x.getUsers().iterator().next())));
+
+			System.out.println(s+"->"+satisfactionPerGroup+
 					" "+inF.getOwner(s));
 		}
 

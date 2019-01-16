@@ -118,6 +118,7 @@ public class Solver {
 							inF.getExhaustiveAllocations(),
 							allocToVar));
 			
+			
 			generateAllocationConstraints(
 					cplex,
 					allAdmissibleAllocations,
@@ -188,15 +189,17 @@ public class Solver {
 
 	public static Set<UserAllocation> optimize(InputFormat input) {
 		
-		Set<UserAllocation> optimal = optimalAllocation(
+		Set<UserAllocation> optimal = optimalAllocationMinimizingUserInsatisfaction(
 				input);
+		
+		checkAllocation(optimal,input);
 		
 		Main.printOutput(optimal, input.getExhaustiveAllocations());
 		Main.processResults(optimal, input);			
 		
 		SatisfactionMeasure sm = SatisfactionMeasure.newInstance(optimal, input);
 		
-		optimalAllocation(
+		optimalAllocationMatchingSatisfactionMeasureAndMinimizingResourceOwnerLoad(
 				input,
 				sm);
 		
@@ -204,7 +207,22 @@ public class Solver {
 	
 	}
 
-	private static Set<UserAllocation> optimalAllocation(InputFormat input)
+	private static void checkAllocation(Set<UserAllocation> optimal, InputFormat input) {
+		for(UserGroup ug: input.getUserGroups())
+		{
+			Map<User,Resource> allocatedResourcesFor=
+					optimal.stream()
+					.filter(x->ug.getUsers().contains(x.getUser()))
+					.collect(Collectors.toMap(x->x.getUser(),
+							x->x.getResource())
+							);
+			assert(allocatedResourcesFor.values().stream()
+					.collect(Collectors.toSet()).size()==1);
+		}
+	}
+
+
+	private static Set<UserAllocation> optimalAllocationMinimizingUserInsatisfaction(InputFormat input)
 	{
 		Optional<Set<UserAllocation>> res = Optional.empty();
 
@@ -223,7 +241,7 @@ public class Solver {
 	}
 
 
-	private static Set<UserAllocation> optimalAllocation(InputFormat input,
+	private static Set<UserAllocation> optimalAllocationMatchingSatisfactionMeasureAndMinimizingResourceOwnerLoad(InputFormat input,
 			SatisfactionMeasure smToReach) {
 		Optional<Set<UserAllocation>> res = Optional.empty();
 		
@@ -320,6 +338,8 @@ public class Solver {
 				allocatedResourceVar,
 				varPerAlloc
 				);
+		
+		matchAllocationsOfGroups(cplex, inF, varPerAlloc);
 		
 		Set<UserAllocation>validAllocations = varPerAlloc.keySet();
 		for(User pl: inF.getAllUsers())
@@ -512,6 +532,43 @@ public class Solver {
 		}*/
 		
 		
+	}
+
+
+	private static void matchAllocationsOfGroups(IloCplex cplex, InputFormat inF,
+			Map<UserAllocation, IloIntVar> varPerAlloc
+			) throws IloException {
+		
+		Map<UserGroup,Map<Resource,IloIntVar>> varPerResourcePerGroup = 
+				new HashMap<>();
+
+		for(UserGroup ug: inF.getUserGroups())
+		{
+			
+			varPerResourcePerGroup.put(ug, new HashMap<>());
+			for(Resource r: 
+				varPerAlloc.keySet()
+				.stream()
+				.filter(x->ug.getUsers().contains(x.getUser()))
+				.map(x->x.getResource())
+				.collect(Collectors.toSet())
+					)
+			{
+				varPerResourcePerGroup.get(ug).put(r, cplex.boolVar(
+						"isResourceAllocatedToGroup("+
+								r+","+ug+")"));
+			}
+			for(UserAllocation ua:
+				varPerAlloc.keySet().stream()
+				.filter(x->ug.getUsers().contains(x.getUser()))
+				.collect(Collectors.toSet()))
+			{
+				cplex.addEq(varPerResourcePerGroup.get(ug).get(ua.getResource()),
+						varPerAlloc.get(ua),
+						"allMemberOfUserGroupsMustBeAllocatedTheSameResource("+ua+","+ug+")"
+						);
+			}
+		}
 	}
 
 

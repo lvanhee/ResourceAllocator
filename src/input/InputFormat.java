@@ -194,4 +194,12 @@ public class InputFormat {
 				.stream().filter(x->providerPerResource.get(x).equals(rp))
 				.collect(Collectors.toSet());
 	}
+	
+	public UserGroup getUserGroupOf(User u)
+	{
+		Set<UserGroup>groups = userGroups.stream().filter(x->x.getUsers().contains(u))
+				.collect(Collectors.toSet());
+		assert(groups.size()==1);
+		return groups.iterator().next();
+	}
 }
