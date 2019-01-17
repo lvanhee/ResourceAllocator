@@ -1,5 +1,4 @@
 package model;
 
-public interface Allocation<T> {
-
+public interface Allocation<Receiver,AllocatedObject> {
 }

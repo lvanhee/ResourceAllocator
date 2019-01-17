@@ -4,8 +4,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-import input.InputFormat;
-import model.UserAllocation;
+import input.ProblemInstance;
+import model.UserResourceTypeAllocation;
 
 public class SatisfactionMeasure {
 	
@@ -15,13 +15,13 @@ public class SatisfactionMeasure {
 		this.nbPerSatisfaction = nbPerSatisfaction;
 	}
 
-	public static SatisfactionMeasure newInstance(Set<UserAllocation> optimal,
-			InputFormat input) {
+	public static SatisfactionMeasure newInstance(Set<UserResourceInstanceAllocation> optimal,
+			ProblemInstance input) {
 		Map<Integer, Integer> nbPerSatisfaction = new HashMap<>();
-		for(UserAllocation ua : optimal)
+		for(UserResourceInstanceAllocation ua : optimal)
 		{
-			int satisfactionOfAlloc = input.getExhaustiveAllocations()
-					.get(ua);
+			int satisfactionOfAlloc = input.getAllocationsPerResourceType()
+					.get(UserResourceTypeAllocation.newInstance(ua));
 			if(!nbPerSatisfaction.containsKey(satisfactionOfAlloc))
 				nbPerSatisfaction.put(satisfactionOfAlloc, 0);
 			nbPerSatisfaction.put(satisfactionOfAlloc, nbPerSatisfaction.get(satisfactionOfAlloc)+1);			

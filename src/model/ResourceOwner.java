@@ -2,15 +2,15 @@ package model;
 
 import java.util.Set;
 
-public class ResourceProvider {
+public class ResourceOwner {
 
 	private final String name;
-	private ResourceProvider(String string) {
+	private ResourceOwner(String string) {
 		this.name = string;
 	}
 
-	public static ResourceProvider newInstance(String string) {
-		return new ResourceProvider(string);
+	public static ResourceOwner newInstance(String string) {
+		return new ResourceOwner(string);
 	}
 	
 	public String toString()
@@ -29,7 +29,7 @@ public class ResourceProvider {
 	
 	public boolean equals(Object o)
 	{
-		return ((ResourceProvider)o).name.equals(name);
+		return ((ResourceOwner)o).name.equals(name);
 	}
 
 }

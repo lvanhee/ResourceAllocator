@@ -1,10 +1,10 @@
 package model;
 
-public class AllocationImpl<T> implements Allocation<T> {
+public class AllocationImpl<T,T2> implements Allocation<T,T2> {
 	private final T receiver;
-	private final Resource resource;
+	private final T2 resource;
 	
-	public AllocationImpl(T pl, Resource role) {
+	public AllocationImpl(T pl, T2 role) {
 		this.receiver = pl;
 		this.resource = role;
 	}
@@ -17,7 +17,7 @@ public class AllocationImpl<T> implements Allocation<T> {
 	
 	public boolean equals(Object o)
 	{
-		AllocationImpl<T> a = (AllocationImpl<T>)o;
+		AllocationImpl<T,T2> a = (AllocationImpl<T,T2>)o;
 		return a.receiver.equals(receiver) && a.resource.equals(resource);
 	}
 	
@@ -26,11 +26,11 @@ public class AllocationImpl<T> implements Allocation<T> {
 		return receiver+":"+resource;
 	}
 
-	public static<T> AllocationImpl<T> newInstance(T usergroup, Resource resource) {
-		return new AllocationImpl<T>(usergroup, resource);
+	public static<T,T2> AllocationImpl<T, T2> newInstance(T usergroup, T2 resource) {
+		return new AllocationImpl<T,T2>(usergroup, resource);
 	}
 
-	public Resource getResource()
+	public T2 getResource()
 	{
 		return resource;
 	}

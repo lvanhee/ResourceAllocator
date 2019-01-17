@@ -10,17 +10,19 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import ilog.concert.IloException;
+import ilog.concert.IloIntExpr;
 import ilog.concert.IloIntVar;
 import ilog.concert.IloNumExpr;
 import ilog.concert.IloNumVar;
 import ilog.cplex.IloCplex;
-import input.InputFormat;
-import main.Main;
-import model.Resource;
-import model.ResourceProvider;
+import ilog.cplex.IloCplexModeler;
+import input.ProblemInstance;
+import model.ResourceType;
+import model.ResourceOwner;
 import model.User;
-import model.UserAllocation;
+import model.UserResourceTypeAllocation;
 import model.UserGroup;
+import output.Printer;
 
 public class Solver {
 	
@@ -28,42 +30,40 @@ public class Solver {
 		NO_CONSTRAINTS,	MINIMIZE_RESOURCE_CONSUMMED_PER_OWNER;}
 
 
-	public static Optional<Set<UserAllocation>> 
+	public static Optional<Set<UserResourceInstanceAllocation>> 
 	optimizeAccordingToMaxInsatisfaction(
 			int maxInsatisfaction,
-			InputFormat inF,
+			ProblemInstance inF,
 			int maxNbResourcePerOwner)
 	{
 	
 		try {
 			IloCplex cplex = new IloCplex();
 			cplex.setOut(null);
-			
-			Set<UserAllocation> allAdmissibleAllocations = 
-					inF.getExhaustiveAllocations()
-					.keySet().stream()
-					.filter(
-							x->inF.getExhaustiveAllocations().get(x)<=maxInsatisfaction)
-					.collect(Collectors.toSet());
-	
+
+			Set<UserResourceInstanceAllocation> allAdmissibleAllocations = 
+					inF.getAllocationsFilteredBy(maxInsatisfaction);
+
 			SortedSet<User> users = 
 					new TreeSet<>((x,y)->x.toString().compareTo(y.toString()));
 			users.addAll(inF.getAllUsers());
-	
-			SortedSet<Resource> allAdmissibleResources = new TreeSet<>((x,y)->x.toString().compareTo(y.toString()));
-			
-			allAdmissibleResources.addAll(
+
+			SortedSet<ResourceInstance> allAdmissibleResourceInstances = 
+					new TreeSet<>((x,y)->x.toString().compareTo(y.toString()));
+
+			allAdmissibleResourceInstances.addAll(
 					allAdmissibleAllocations
-					.stream().map(x->x.getResource()).collect(Collectors.toSet()));
+					.stream().map(x->x.getResource())
+					.collect(Collectors.toSet()));
 			
-			Map<UserAllocation, IloIntVar> allocToVar = 
+			Map<UserResourceInstanceAllocation, IloIntVar> allocToVar = 
 					generateVariablePerAllocation(cplex,
 					allAdmissibleAllocations
 					);
 			
 			
-			Map<Resource, IloIntVar> resourceMinLiftingJokerVars = 
-					allAdmissibleResources.stream().collect(
+			Map<ResourceInstance, IloIntVar> resourceMinLiftingJokerVars = 
+					allAdmissibleResourceInstances.stream().collect(
 							Collectors.toMap(Function.identity(),
 									x->
 									{
@@ -84,20 +84,22 @@ public class Solver {
 				if(allAdmissibleAllocations.stream()
 						.anyMatch(x-> x.getUser().equals(pl)))
 				{
-					UserAllocation worseAlloc = allAdmissibleAllocations.stream()
+					UserResourceInstanceAllocation worseAlloc = 
+							allAdmissibleAllocations.stream()
 							.filter(x-> x.getUser().equals(pl))
-							.max((x,y)->inF.getExhaustiveAllocations().get(x)-
-									inF.getExhaustiveAllocations().get(y)).get();
-					worseAllocValue = inF.getExhaustiveAllocations().get(worseAlloc);
+							.max((x,y)->inF.getInsatisfactionFor(x)-
+									inF.getInsatisfactionFor(y)).get();
+					worseAllocValue = inF.getInsatisfactionFor(worseAlloc);
 				}
-	
-				for(UserAllocation a: allAdmissibleAllocations)
+					
+				/*@Deprecated
+				 * for(UserResourceInstanceAllocation a: allAdmissibleAllocations)
 					if(!allAdmissibleAllocations.contains(a) && a.getUser().equals(pl))
-						inF.getExhaustiveAllocations().put(a, worseAllocValue+1);
+						inF.getAllocations().put(a, worseAllocValue+1);*/
 			}
 			
-			Map<Resource, IloIntVar> varPerResource = new HashMap<>();
-			for(Resource r: allAdmissibleResources)
+			Map<ResourceInstance, IloIntVar> varPerResource = new HashMap<>();
+			for(ResourceInstance r: allAdmissibleResourceInstances)
 			{
 				try {
 					varPerResource.put(r, cplex
@@ -105,24 +107,20 @@ public class Solver {
 							));
 				} catch (IloException e) {e.printStackTrace();throw new Error();}
 			}
-			
-			
-			
-	
-			
+
 			cplex.addMinimize(
-					Main.getExpressionToMinimize(
+					Solver.getExpressionToMinimize(
 							cplex, 
 							allAdmissibleAllocations,
 							users,
-							inF.getExhaustiveAllocations(),
+							inF.getRelativeInsatisfactionFor(allAdmissibleAllocations),
 							allocToVar));
 			
 			
 			generateAllocationConstraints(
 					cplex,
 					allAdmissibleAllocations,
-					allAdmissibleResources,
+					allAdmissibleResourceInstances,
 					allocToVar,
 					varPerResource,
 					resourceMinLiftingJokerVars,
@@ -136,7 +134,7 @@ public class Solver {
 			if (! cplex.solve() )
 				return Optional.empty();
 			System.out.println("Solution status = " + cplex.getStatus());
-			Set<UserAllocation>s=
+			Set<UserResourceInstanceAllocation>s=
 					processCplexResults(cplex, allocToVar);
 			
 			
@@ -157,18 +155,18 @@ public class Solver {
 
 	private static void addConstraintsOnResourceOwners(
 			IloCplex cplex, 
-			SortedSet<Resource> allAdmissibleResources, 
-			Set<UserAllocation> allAdmissibleAllocations,
-			InputFormat inF, 
+			SortedSet<ResourceInstance> allAdmissibleResources, 
+			Set<UserResourceInstanceAllocation> allAdmissibleAllocations,
+			ProblemInstance inF, 
 			int maxNbResourcePerOwner, 
-			Map<UserAllocation, IloIntVar> varPerAlloc,
-			Map<Resource,IloIntVar> varPerResource) throws IloException {
+			Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc,
+			Map<ResourceInstance,IloIntVar> varPerResource) throws IloException {
 
-		for(ResourceProvider rp : inF.getAllResourceOwners())
+		for(ResourceOwner rp : inF.getAllResourceOwners())
 		{
 			IloNumExpr countResourcesAllocatedForRP = cplex.constant(0);
 
-			for(Resource r: inF.getResourcesFrom(rp)
+			for(ResourceInstance r: inF.getResourceInstancesFrom(rp)
 					.stream()
 					.filter(x->allAdmissibleResources.contains(x))
 					.collect(Collectors.toSet()))
@@ -187,15 +185,15 @@ public class Solver {
 	
 	
 
-	public static Set<UserAllocation> optimize(InputFormat input) {
+	public static Set<UserResourceInstanceAllocation> optimize(ProblemInstance input) {
 		
-		Set<UserAllocation> optimal = optimalAllocationMinimizingUserInsatisfaction(
-				input);
+		Set<UserResourceInstanceAllocation> optimal = 
+				optimalAllocationMinimizingUserInsatisfaction(input);
 		
 		checkAllocation(optimal,input);
 		
-		Main.printOutput(optimal, input.getExhaustiveAllocations());
-		Main.processResults(optimal, input);			
+		Printer.printOutput(optimal, input.getAllocationsPerResourceInstance());
+		Printer.processResults(optimal, input);	
 		
 		SatisfactionMeasure sm = SatisfactionMeasure.newInstance(optimal, input);
 		
@@ -207,10 +205,12 @@ public class Solver {
 	
 	}
 
-	private static void checkAllocation(Set<UserAllocation> optimal, InputFormat input) {
+	private static void checkAllocation(
+			Set<UserResourceInstanceAllocation> optimal,
+			ProblemInstance input) {
 		for(UserGroup ug: input.getUserGroups())
 		{
-			Map<User,Resource> allocatedResourcesFor=
+			Map<User,ResourceInstance> allocatedResourcesFor=
 					optimal.stream()
 					.filter(x->ug.getUsers().contains(x.getUser()))
 					.collect(Collectors.toMap(x->x.getUser(),
@@ -222,9 +222,9 @@ public class Solver {
 	}
 
 
-	private static Set<UserAllocation> optimalAllocationMinimizingUserInsatisfaction(InputFormat input)
+	private static Set<UserResourceInstanceAllocation> optimalAllocationMinimizingUserInsatisfaction(ProblemInstance input)
 	{
-		Optional<Set<UserAllocation>> res = Optional.empty();
+		Optional<Set<UserResourceInstanceAllocation>> res = Optional.empty();
 
 		for(int i = 1 ; i <= input.getAllUsers().size()&&!res.isPresent(); i++)
 		{
@@ -241,9 +241,9 @@ public class Solver {
 	}
 
 
-	private static Set<UserAllocation> optimalAllocationMatchingSatisfactionMeasureAndMinimizingResourceOwnerLoad(InputFormat input,
+	private static Set<UserResourceInstanceAllocation> optimalAllocationMatchingSatisfactionMeasureAndMinimizingResourceOwnerLoad(ProblemInstance input,
 			SatisfactionMeasure smToReach) {
-		Optional<Set<UserAllocation>> res = Optional.empty();
+		Optional<Set<UserResourceInstanceAllocation>> res = Optional.empty();
 		
 		int worseInsatisfactionToMeet = smToReach.getWorseAllocationValue();
 			
@@ -267,8 +267,8 @@ public class Solver {
 					return res.get();
 				else 
 				{
-					Main.printOutput(res.get(), input.getExhaustiveAllocations());
-					Main.processResults(res.get(), input);			
+					Printer.printOutput(res.get(), input.getAllocationsPerResourceInstance());
+					Printer.processResults(res.get(), input);			
 				}
 				res = Optional.empty();
 		}
@@ -280,22 +280,22 @@ public class Solver {
 
 	static void generateHardAllocationsConstraints(
 			IloCplex cplex, 
-			Map<UserAllocation, IloIntVar> varPerAlloc,
-			Set<UserAllocation> hardConstraints) throws IloException {
-		for(UserAllocation hc: hardConstraints)
+			Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc,
+			Set<UserResourceInstanceAllocation> hardConstraints) throws IloException {
+		for(UserResourceInstanceAllocation hc: hardConstraints)
 			cplex.addEq(1,
 					varPerAlloc.get(hc), "HardConstraint("+hc+")");
 	}
 
 
 
-	static Map<UserAllocation, IloIntVar> generateVariablePerAllocation(
+	static Map<UserResourceInstanceAllocation, IloIntVar> generateVariablePerAllocation(
 			IloCplex cplex,
-			Collection<UserAllocation> consideredAllocations
+			Collection<UserResourceInstanceAllocation> consideredAllocations
 			) throws IloException {
-		Map<UserAllocation, IloIntVar> varPerAlloc = new HashMap<>();
+		Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc = new HashMap<>();
 		
-		for(UserAllocation pl : consideredAllocations)
+		for(UserResourceInstanceAllocation pl : consideredAllocations)
 				varPerAlloc.put(pl,
 						cplex.boolVar(
 						//cplex.numVar(0, 1,
@@ -306,8 +306,9 @@ public class Solver {
 
 
 
-	static Set<UserAllocation> processCplexResults(IloCplex cplex, 
-			Map<UserAllocation, IloIntVar> varPerAlloc) {
+	static Set<UserResourceInstanceAllocation> processCplexResults(
+			IloCplex cplex, 
+			Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc) {
 		return varPerAlloc.keySet().stream()
 		.filter(x->{
 			try {
@@ -323,12 +324,12 @@ public class Solver {
 	
 	public static void generateAllocationConstraints(
 			IloCplex cplex, 
-			Set<UserAllocation> allAdmissibleAllocations, 
-			SortedSet<Resource> allAdmissibleResources,
-			Map<UserAllocation, IloIntVar> varPerAlloc,
-			Map<Resource, IloIntVar> allocatedResourceVar,
-			Map<Resource, IloIntVar> allocationJoker,
-			InputFormat inF,
+			Set<UserResourceInstanceAllocation> allAdmissibleAllocations, 
+			SortedSet<ResourceInstance> allAdmissibleResources,
+			Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc,
+			Map<ResourceInstance, IloIntVar> allocatedResourceVar,
+			Map<ResourceInstance, IloIntVar> allocationJoker,
+			ProblemInstance inF,
 			int maxNbResourcePerOwner
 			)
 					throws IloException{
@@ -341,12 +342,12 @@ public class Solver {
 		
 		matchAllocationsOfGroups(cplex, inF, varPerAlloc);
 		
-		Set<UserAllocation>validAllocations = varPerAlloc.keySet();
+		Set<UserResourceInstanceAllocation>validAllocations = varPerAlloc.keySet();
 		for(User pl: inF.getAllUsers())
 		{
 			IloNumExpr oneResourcePerUser = 
 					cplex.constant(0);
-			for(UserAllocation al: inF.getAllAllocationsFor(pl))
+			for(UserResourceInstanceAllocation al: inF.getResouceInstanceAllocationsFor(pl))
 			{
 				if(!validAllocations.contains(al))continue;
 				oneResourcePerUser = 
@@ -360,26 +361,13 @@ public class Solver {
 					"EachUserIsGivenExactlyOneResource("+pl+")");
 		}
 
-		for(Resource resource: allAdmissibleResources)
-		{
-			IloNumExpr maxKUsersPerResource = cplex.constant(0);
-			for(UserAllocation ua: inF.getAllocationsForResource(resource)
-					.stream()
-					.filter(x->allAdmissibleAllocations.contains(x))
-					.collect(Collectors.toSet()))
-			{
-				
-				maxKUsersPerResource = cplex.sum(
-						maxKUsersPerResource, varPerAlloc.get(ua));
-			}
-			cplex.addGe(
-					inF.getMaxNbUsersPerResource(), 
-					maxKUsersPerResource, 
-					"EachResourceIsAllocatedAtMostKTimes("+resource+","+
-					inF.getMaxNbUsersPerResource()+")");
-		}
+		allocateEachResourceInstanceAtMostKTimes(cplex, 
+				inF, 
+				varPerAlloc, 
+				allAdmissibleResources,
+				validAllocations);
 		
-		for(UserAllocation a:allAdmissibleAllocations)
+		for(UserResourceInstanceAllocation a:allAdmissibleAllocations)
 		{
 			cplex.addGe(
 					allocatedResourceVar.get(a.getResource()),
@@ -387,10 +375,10 @@ public class Solver {
 					"CountsAsAllocatedIfAllocatedFor("+a.getResource()+","+a+")");
 		}	
 		
-		for(Resource resource: allAdmissibleResources)
+		for(ResourceInstance resource: allAdmissibleResources)
 		{
 			IloNumExpr countUsersPerResource = cplex.constant(0);
-			for(UserAllocation s: inF.getAllocationsForResource(resource)
+			for(UserResourceInstanceAllocation s: inF.getAllocationsForResource(resource)
 					.stream()
 					.filter(x->allAdmissibleAllocations.contains(x))
 					.collect(Collectors.toSet()))
@@ -416,10 +404,10 @@ public class Solver {
 					"EachNonAllocatedResourceIsAllocatedAtMost0TimesUnlessTheJokerIsUsed("+resource+")");
 		}
 		
-		for(Resource resource: allAdmissibleResources)
+		for(ResourceInstance resource: allAdmissibleResources)
 		{
 			IloNumExpr countUsersPerResource = cplex.constant(0);
-			for(UserAllocation ua: inF.getAllocationsForResource(resource).stream()
+			for(UserResourceInstanceAllocation ua: inF.getAllocationsForResource(resource).stream()
 					.filter(x->allAdmissibleAllocations.contains(x))
 					.collect(Collectors.toSet()))
 			{
@@ -451,12 +439,12 @@ public class Solver {
 		cplex.addLe(allJokers, 1,
 				"AtMostOneJoker");
 		
-		for(Resource resource: allAdmissibleResources.stream()
+		for(ResourceInstance resource: allAdmissibleResources.stream()
 				.filter(x->allAdmissibleAllocations.contains(x))
 				.collect(Collectors.toSet()))
 		{
 			IloNumExpr countUsersPerResource = cplex.constant(0);
-			for(UserAllocation s: inF.getAllocationsForResource(resource))
+			for(UserResourceInstanceAllocation s: inF.getAllocationsForResource(resource))
 			{
 				countUsersPerResource = cplex.sum(
 						countUsersPerResource, varPerAlloc.get(s));
@@ -480,18 +468,20 @@ public class Solver {
 
 		//ensure pairs
 		for(UserGroup userGroup: inF.getUserGroups())
-			for(Resource resource: allAdmissibleResources.stream()
+			for(ResourceInstance resource: allAdmissibleResources.stream()
 					.filter(x->allAdmissibleAllocations.contains(x))
 					.collect(Collectors.toSet()))
 			{
 				User u0 = userGroup.getUsers().iterator().next();
-				UserAllocation u0PicksR= UserAllocation.newInstance(u0, resource);
+				UserResourceInstanceAllocation u0PicksR=
+						UserResourceInstanceAllocation.newInstance(u0, resource);
 				
 				if(!varPerAlloc.containsKey(u0PicksR)) continue;
 
 				for(User u1: userGroup.getUsers())	
 				{
-					UserAllocation u1PicksR= UserAllocation.newInstance(u1, resource);
+					UserResourceInstanceAllocation u1PicksR= 
+							UserResourceInstanceAllocation.newInstance(u1, resource);
 
 					IloNumExpr exprUser0PicksR =
 							varPerAlloc.get(u0PicksR);
@@ -535,18 +525,44 @@ public class Solver {
 	}
 
 
-	private static void matchAllocationsOfGroups(IloCplex cplex, InputFormat inF,
-			Map<UserAllocation, IloIntVar> varPerAlloc
+	private static void allocateEachResourceInstanceAtMostKTimes(
+			IloCplexModeler cplex, ProblemInstance inF,
+			Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc,
+			Set<ResourceInstance> allAdmissibleResources,
+			Set<UserResourceInstanceAllocation> allAdmissibleAllocations) throws IloException {
+		for(ResourceInstance resource: allAdmissibleResources)
+		{
+			IloNumExpr maxKUsersPerResource = cplex.constant(0);
+			for(UserResourceInstanceAllocation ua: inF.getAllocationsForResource(resource)
+					.stream()
+					.filter(x->allAdmissibleAllocations.contains(x))
+					.collect(Collectors.toSet()))
+			{
+				
+				maxKUsersPerResource = cplex.sum(
+						maxKUsersPerResource, varPerAlloc.get(ua));
+			}
+			cplex.addGe(
+					inF.getMaxNbUsersPerResource(), 
+					maxKUsersPerResource, 
+					"EachResourceIsAllocatedAtMostKTimes("+resource+","+
+					inF.getMaxNbUsersPerResource()+")");
+		}
+	}
+
+
+	private static void matchAllocationsOfGroups(IloCplex cplex, ProblemInstance inF,
+			Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc
 			) throws IloException {
 		
-		Map<UserGroup,Map<Resource,IloIntVar>> varPerResourcePerGroup = 
+		Map<UserGroup,Map<ResourceInstance,IloIntVar>> varPerResourcePerGroup = 
 				new HashMap<>();
 
 		for(UserGroup ug: inF.getUserGroups())
 		{
 			
 			varPerResourcePerGroup.put(ug, new HashMap<>());
-			for(Resource r: 
+			for(ResourceInstance r: 
 				varPerAlloc.keySet()
 				.stream()
 				.filter(x->ug.getUsers().contains(x.getUser()))
@@ -558,7 +574,7 @@ public class Solver {
 						"isResourceAllocatedToGroup("+
 								r+","+ug+")"));
 			}
-			for(UserAllocation ua:
+			for(UserResourceInstanceAllocation ua:
 				varPerAlloc.keySet().stream()
 				.filter(x->ug.getUsers().contains(x.getUser()))
 				.collect(Collectors.toSet()))
@@ -572,20 +588,21 @@ public class Solver {
 	}
 
 
-	private static void connectResourcesAndAllocations(IloCplex cplex, InputFormat inF,
-			Map<Resource, IloIntVar> allocatedResourceVar, 
-			Map<UserAllocation, IloIntVar> varPerAlloc) throws IloException 
+	private static void connectResourcesAndAllocations(IloCplex cplex, ProblemInstance inF,
+			Map<ResourceInstance, IloIntVar> allocatedResourceVar, 
+			Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc) throws IloException 
 	{
-		for(Resource r: allocatedResourceVar.keySet())
+		for(ResourceInstance r: allocatedResourceVar.keySet())
 		{
 			IloNumExpr allAllocations = cplex.constant(0);
 			
-			Set<UserAllocation> allocationsForResource = varPerAlloc.keySet()
+			Set<UserResourceInstanceAllocation> allocationsForResource = 
+					varPerAlloc.keySet()
 					.stream()
 					.filter(x->x.getResource().equals(r))
 					.collect(Collectors.toSet());
 					
-			for(UserAllocation ua:allocationsForResource)
+			for(UserResourceInstanceAllocation ua:allocationsForResource)
 				allAllocations = cplex.sum(allAllocations, varPerAlloc.get(ua));
 			
 			IloNumExpr resource = 
@@ -594,6 +611,37 @@ public class Solver {
 			cplex.addLe(allAllocations, resource,
 					"AllocationsMakeResourceConsummed("+r+")");
 		}
+	}
+
+
+	public static IloNumExpr getExpressionToMinimize(
+			IloCplex cplex, 
+			Set<UserResourceInstanceAllocation> allowedAllocations, 
+			Set<User> users,
+			Map<UserResourceInstanceAllocation, Integer> prefsPerAllocation,
+			Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc
+			) throws IloException {
+		IloNumExpr exprToOptimize =  cplex.constant(0);
+		for(UserResourceInstanceAllocation a:allowedAllocations)
+		{
+			exprToOptimize = 
+					cplex.sum(
+							exprToOptimize,
+							cplex.prod(
+									Math.pow(users.size(), prefsPerAllocation.get(a))+1,
+									varPerAlloc.get(a)));
+		}
+		IloNumExpr[] weightedAllocations = new IloIntExpr[prefsPerAllocation.size()];
+	
+		int i = 0;
+		for(UserResourceInstanceAllocation a: varPerAlloc.keySet())
+		{
+			weightedAllocations[i] = cplex.prod(
+					varPerAlloc.get(a),
+					prefsPerAllocation.get(a));
+			i++;
+		}
+		return exprToOptimize;
 	}
 
 

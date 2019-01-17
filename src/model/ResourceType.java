@@ -1,15 +1,15 @@
 package model;
 
-public class Resource {
+public class ResourceType {
 	
 	private final String name;
 
-	private Resource(String name) {
+	private ResourceType(String name) {
 		this.name = name;
 	}
 
-	public static Resource newInstance(String name) {
-		return new Resource(name);
+	public static ResourceType newInstance(String name) {
+		return new ResourceType(name);
 	}
 	
 	public int hashCode()
@@ -19,7 +19,7 @@ public class Resource {
 	
 	public boolean equals(Object o)
 	{
-		return ((Resource)o).name.equals(name);
+		return ((ResourceType)o).name.equals(name);
 	}
 	
 	public String toString()
