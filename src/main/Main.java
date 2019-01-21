@@ -70,9 +70,24 @@ public class Main {
 	 * acquired by the user
 	 * COMPARATIVE_INSATISFACTION i.e. the amount of people who got preferred resource 
 	 * instances
+	 * 
+	 * Personal insatisfaction considers the relative satisfaction of the user, regardless
+	 * of the allocations of other users.
 	 * Comparative insatisfaction integrates the abundance of a (denied) resource type
 	 * as an (aggravating) factor on user satisfaction. Being denied an abundant 
 	 * resource is considered as "more unfair".
+	 * 
+	 * Programmer's notice: the current implementation uses mathematical tricks for
+	 * finding the optimal allocation as a "one-shot" optimization operation.
+	 * This causes the program to create a tight bound on the number of maximal insatisfaction,
+	 * users and projects.
+	 * This issue can be fixed, using a different approach (with a very similar program
+	 * to what is already available).
+	 * First, find the smallest pn such that the allocation is feasible. 
+	 * Then, on a new program, set as a constraint that exactly pn projects should be 
+	 * allocated for rank n and seek to minimize p(n-1).
+	 * Proceed like this until setting all the values.
+	 *  
 	 * 
 	 *  
 	 * @param args
