@@ -31,19 +31,22 @@ public class ProblemInstance {
 	private final int maxNbUsersPerResource;
 	private final Map<UserResourceInstanceAllocation, Integer> relativePrefPerResourceAllocation;
 	private final Set<UserGroup> userGroups;
-	private final Map<ResourceType, ResourceOwner> providerPerResource;	
-	private final Map<ResourceType, Integer> amountPerResource;
-	
+	private final Function<ResourceType, ResourceOwner> providerPerResource;	
+	private final Function<ResourceType, Integer> amountOfInstancesPerResourceType;
+	private final OutputType ot;
+		
 	private ProblemInstance(
 			Map<UserResourceTypeAllocation, Double> baseValues,
 			int numberOfUsersPerResource,
 			int maxNbUsersPerResource,
 			Set<UserGroup> userGroups,
-			Map<ResourceType, ResourceOwner> providerPerResource,
-			Map<ResourceType, Integer> amountPerResource,
-			UserPreferenceMeaning upm
+			Function<ResourceType, ResourceOwner> providerPerResource,
+			Function<ResourceType, Integer> amountPerResource,
+			UserPreferenceMeaning upm,
+			OutputType ot
 			) {
-		this.amountPerResource = amountPerResource;
+		this.ot = ot;
+		this.amountOfInstancesPerResourceType = amountPerResource;
 		this.minNbUsersPerResource = numberOfUsersPerResource;
 		this.maxNbUsersPerResource = maxNbUsersPerResource;
 		 relativePrefPerResourceAllocation = 
@@ -56,10 +59,6 @@ public class ProblemInstance {
 	}
 	
 	private void check() {
-		for(ResourceType r: getResourceTypes())
-			if(!providerPerResource.containsKey(r))
-				throw new Error("Resource:"+r+" has not been related to any resource owner!");
-		
 		if(getNbAllocableSlots() < getAllUsers().size())
 			throw new Error("Not enough slots for satisfying all users. Available slots:"+getNbAllocableSlots()+
 					"Nb Users:"+getAllUsers());
@@ -67,7 +66,7 @@ public class ProblemInstance {
 	
 	public int getAmountOf(ResourceType r)
 	{
-		return amountPerResource.get(r);
+		return amountOfInstancesPerResourceType.apply(r);
 	}
 
 	private int getNbAllocableSlots() {
@@ -79,20 +78,22 @@ public class ProblemInstance {
 				getMaxNbUsersPerResource();
 	}
 
-	public static ProblemInstance newInstance(Map<UserResourceTypeAllocation, Double> baseValues,
+	public static ProblemInstance newInstance
+	(
+			Map<UserResourceTypeAllocation, Double> baseValues,
 			int numberOfUsersPerResource,
 			int maxNbUsersPerResource,
 			Set<UserGroup> groups, 
-			Map<ResourceType, ResourceOwner> providerPerResource,
-			Map<ResourceType, Integer> amountPerResource,
-			UserPreferenceMeaning upm)
+			Function<ResourceType, ResourceOwner> providerPerResource,
+			Function<ResourceType, Integer> amountPerResource,
+			UserPreferenceMeaning upm, OutputType ot)
 	{
 		return new ProblemInstance(
 				baseValues,
 				numberOfUsersPerResource,
 				maxNbUsersPerResource, 
 				groups,
-				providerPerResource, amountPerResource, upm);
+				providerPerResource, amountPerResource, upm,ot);
 	}
 	
 	public int getMaxNbUsersPerResource() {
@@ -139,10 +140,11 @@ public class ProblemInstance {
 				.collect(Collectors.toSet());
 	}
 	
-	private static Map<UserResourceInstanceAllocation,Integer> toRelativePreferences(
+	private static Map<UserResourceInstanceAllocation,Integer> 
+	toRelativePreferences(
 			Map<UserResourceTypeAllocation, Double> baseValues,
 			UserPreferenceMeaning pt,
-			Map<ResourceType, Integer> resourceInstancePerResourceType
+			Function<ResourceType, Integer> resourceInstancePerResourceType
 			)
 	{
 		Set<User> requesters = 
@@ -167,7 +169,7 @@ public class ProblemInstance {
 			
 			for(ResourceType rt: resources)
 				for(ResourceInstance ri: ResourceInstance.newInstancesFrom(rt, 
-						resourceInstancePerResourceType.get(rt)))
+						resourceInstancePerResourceType.apply(rt)))
 					res.put(UserResourceInstanceAllocation.newInstance(s, ri), 
 							orderedPreferences.get(rt));
 
@@ -275,22 +277,25 @@ public class ProblemInstance {
 	
 
 	private int getAmountOfInstancesFor(ResourceType resource) {
-		return amountPerResource.get(resource);
+		return amountOfInstancesPerResourceType.apply(resource);
 	}
 
 	public ResourceOwner getOwner(ResourceType r) {
-		return providerPerResource.get(r);
+		return providerPerResource.apply(r);
 	}
 
+	
 	public Set<ResourceOwner> getAllResourceOwners() {
-		return providerPerResource.values()
+		return 
+				relativePrefPerResourceAllocation.keySet()
 				.stream()
+				.map(x->providerPerResource.apply(x.getResource().getResourceType()))
 				.collect(Collectors.toSet());
 	}
 
 	public Set<ResourceType> getResourcesTypesFrom(ResourceOwner rp) {
-		return providerPerResource.keySet()
-				.stream().filter(x->providerPerResource.get(x).equals(rp))
+		return getResourceTypes()
+				.stream().filter(x->providerPerResource.apply(x).equals(rp))
 				.collect(Collectors.toSet());
 	}
 	
@@ -323,6 +328,8 @@ public class ProblemInstance {
 	}
 
 	private static ProblemInstance newInstance(InputBuilder ib) {
+		if(!ib.has(ParameterTypes.PREFERENCE_FILE))
+			throw new Error("Please enter as input the preference file");
 		Map<UserResourceTypeAllocation, Double> baseValues = 
 				InputParser.parseUserPreference(
 						ib.get(ParameterTypes.PREFERENCE_FILE));
@@ -332,20 +339,25 @@ public class ProblemInstance {
 		
 		Set<UserGroup> userGroups = InputParser.parseUserGroups(ib.get(ParameterTypes.PREFERENCE_FILE));
 		
-		Map<ResourceType, ResourceOwner> providerPerResource = 
-				InputParser.parseProviderPerResource(ib.get(ParameterTypes.RESOURCE_PER_OWNER));
-		
-		Map<ResourceType,Integer> amountPerResource = 
-				InputParser.parseAmountPerResource(ib.get(ParameterTypes.AMOUNT_PER_RESOURCE));
+		Function<ResourceType, ResourceOwner> providerPerResource =
+				InputParser.parseProviderPerResource(ib.get(ParameterTypes.RESOURCE_OWNERSHIP_MODE));
+
+		Function<ResourceType,Integer> amountPerResource = 
+				InputParser.parseAmountPerResource(ib.get(ParameterTypes.RESOURCE_DUPLICATE_MODE));
 		UserPreferenceMeaning upm = InputParser.parseUserPreferenceMeaning(ib.get(ParameterTypes.PREFERENCE_MEANING));
+		
+		
 				
-		return newInstance(baseValues,
+		return newInstance(
+				baseValues,
 				minNbUsersPerResource,
 				maxNbUsersPerResource, 
 				userGroups, 
 				providerPerResource, 
 				amountPerResource,
-				upm);
+				upm,
+				OutputType.valueOf(ib.get(ParameterTypes.OUTPUT_MODE)))
+				;
 		
 	}
 
@@ -391,7 +403,7 @@ public class ProblemInstance {
 	public Set<ResourceInstance> getResourceInstancesFrom(ResourceOwner rp) {
 		return getResourcesTypesFrom(rp)
 				.stream()
-				.map(x->ResourceInstance.newInstancesFrom(x, amountPerResource.get(x)))
+				.map(x->ResourceInstance.newInstancesFrom(x, amountOfInstancesPerResourceType.apply(x)))
 				.reduce(new HashSet<ResourceInstance>(), (x,y)->{x.addAll(y); return x;});
 	}
 
@@ -401,5 +413,16 @@ public class ProblemInstance {
 
 	public ResourceOwner getOwner(ResourceInstance s) {
 		return getOwner(s.getResourceType());
+	}
+	
+	public enum OutputType {LATEX_REPORT, CONSOLE_PRINT}
+
+	public OutputType getOutputType() {
+		return ot;
+		
+	}
+
+	public boolean isDebugPrint() {
+		return true;
 	}
 }

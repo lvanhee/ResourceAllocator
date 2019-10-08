@@ -1,15 +1,8 @@
 package main;
-import java.util.HashSet;
-import java.util.Optional;
 import java.util.Set;
 
-import javax.swing.event.ListSelectionEvent;
-
-import ilog.concert.IloNumVar;
 import input.ProblemInstance;
-import model.UserResourceTypeAllocation;
 import output.Printer;
-import solver.SatisfactionMeasure;
 import solver.Solver;
 import solver.UserResourceInstanceAllocation;
 
@@ -91,20 +84,21 @@ public class Main {
 	 * 
 	 *  
 	 * @param args
-	 */
-	public static void main(String[] args)
-	{		
+	 */	
+	public static void main(String args[])
+	{
 		ProblemInstance input = ProblemInstance.newInstance(args);
 		
-		Printer.displayInstanceStats(input);
 		
 		System.out.println();
 		
 		Set<UserResourceInstanceAllocation> res = Solver.optimize(input);
 		
-		Printer.printOutput(res, input.getAllocationsPerResourceInstance());
+		Printer.displayResults(args,input,res);
+
+//		Printer.printOutput(res, input.getAllocationsPerResourceInstance());
 	
-		Printer.processResults(res, input);			
+		Printer.processResults(res, input);		
 	}
 
 	

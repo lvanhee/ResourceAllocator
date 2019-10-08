@@ -7,11 +7,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IllegalFormatException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import input.InputBuilder.ParameterTypes;
 import model.ResourceType;
 import model.ResourceOwner;
 import model.User;
@@ -135,8 +138,17 @@ public class InputParser {
 			
 	}
 
-	public static Map<ResourceType, ResourceOwner> parseProviderPerResource(String file) {
-		Map<ResourceType, ResourceOwner> providerPerResource = new HashMap<>();
+	public static Function<ResourceType, ResourceOwner> parseProviderPerResource(String input) {
+		if(input.equals(ResourceOwnershipMode.Enum.DISABLED.toString()))
+			return x->ResourceOwner.newInstance("everybody");
+		/**
+		 * 		if(.equals(ResourceOwnershipMode.Enum.DISABLED.toString()))
+			providerPerResource = new HashMap<ResourceType, ResourceOwner>();
+		else
+			providerPerResource = InputParser.parseProviderPerResource(ib.get(ParameterTypes.RESOURCE_OWNERSHIP_MODE));
+		
+		 */
+		/*Map<ResourceType, ResourceOwner> providerPerResource = new HashMap<>();
 			try {
 				for(String s: Files.readAllLines(Paths.get(file)))
 				{
@@ -150,23 +162,52 @@ public class InputParser {
 				e.printStackTrace();
 				throw new Error();
 			}
-		return providerPerResource;
+		return providerPerResource;*/
+			throw new Error();
 	}
 
-	public static Map<ResourceType, Integer> parseAmountPerResource(String file) {
-		Map<ResourceType, Integer> res = new HashMap<>();
 
-		try {
-			for(String s: Files.readAllLines(Paths.get(file)))
+	public static Function<ResourceType, Integer> parseAmountPerResource(String value) {
+
+		if(value.equals("ONE_OF_EACH"))
+			return x->1;
+			else if(value.startsWith("FILE_BASED"))
 			{
-				String[] split = s.split(";");
-				res.put(ResourceType.newInstance(split[0]), Integer.parseInt(split[1]));
+				String fileName = value.substring(value.indexOf("(")+1, value.indexOf(","));
+				value = value.substring(value.indexOf(",")+1);
+				int resourceNameColumn = Integer.parseInt(value.substring(0, value.indexOf(",")));
+				int resourceAmountColumn = Integer.parseInt(value.substring(value.indexOf(",")+1,value.indexOf(")")));
+				Map<ResourceType, Integer> res = new HashMap<>();
+
+				try {
+					for(String s: Files.readAllLines(Paths.get(fileName)))
+					{
+						String[] split = s.split(";");
+						
+						String resourceNumberS = split[resourceAmountColumn];
+						try {
+							Integer.parseInt(resourceNumberS);
+						}
+						catch(NumberFormatException e)
+						{
+							System.err.println("Error when parsing the file describing the amount of instance per resource");
+							System.err.println("The column indicating the instance number is:"+resourceAmountColumn);
+							System.err.println("The line read is: "+s);
+							System.err.println("The column #"+resourceAmountColumn+" is not a number: "+resourceNumberS);
+							System.err.println("Info: The file is located in:"+fileName);
+							throw new Error();
+							
+						}
+						res.put(ResourceType.newInstance(split[resourceNameColumn]), 
+								Integer.parseInt(resourceNumberS));
+					}
+				} catch (IOException e) {
+					e.printStackTrace();
+					throw new Error();
+				}
+				return x->res.get(x);
 			}
-		} catch (IOException e) {
-			e.printStackTrace();
-			throw new Error();
-		}
-		return res;
+			else throw new Error();
 	}
 
 	public static UserPreferenceMeaning parseUserPreferenceMeaning(String string) {

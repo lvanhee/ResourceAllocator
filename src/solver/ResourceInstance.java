@@ -49,4 +49,8 @@ public class ResourceInstance {
 		return type;
 	}
 
+	public int getInstanceNumber() {
+		return instanceNumber;
+	}
+
 }

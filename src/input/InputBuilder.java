@@ -16,6 +16,7 @@ import model.ResourceType;
 import model.ResourceOwner;
 import model.User;
 import model.UserResourceTypeAllocation;
+import output.Printer;
 import model.UserGroup;
 
 public class InputBuilder {
@@ -24,9 +25,14 @@ public class InputBuilder {
 		PREFERENCE_FILE,
 		MIN_NB_USER_PER_RESOURCE,
 		MAX_NB_USER_PER_RESOURCE,
-		RESOURCE_PER_OWNER,
-		AMOUNT_PER_RESOURCE,
-		PREFERENCE_MEANING
+		PREFERENCE_MEANING,
+		RESOURCE_DUPLICATE_MODE, //indicates whether resources are unique and how they are distributed
+		RESOURCE_OWNERSHIP_MODE, //indicates how resources are managed
+		OUTPUT_MODE;
+
+		public static String toLatexString(ParameterTypes pt) {
+			return Printer.toLatexString(pt.toString());
+		}
 	}
 
 	private final Map<ParameterTypes, String> valuePerInputType;
@@ -52,6 +58,19 @@ public class InputBuilder {
 	
 	public static void checkCoherence(InputBuilder args) {
 		
+	}
+
+	public boolean has(ParameterTypes preferenceFile) {
+		return valuePerInputType.containsKey(preferenceFile);
+	}
+	
+	public String toString()
+	{
+		return valuePerInputType.toString();
+	}
+
+	public Set<ParameterTypes> getParameters() {
+		return valuePerInputType.keySet();
 	}
 
 }
