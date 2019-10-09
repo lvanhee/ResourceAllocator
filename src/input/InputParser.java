@@ -141,28 +141,34 @@ public class InputParser {
 	public static Function<ResourceType, ResourceOwner> parseProviderPerResource(String input) {
 		if(input.equals(ResourceOwnershipMode.Enum.DISABLED.toString()))
 			return x->ResourceOwner.newInstance("everybody");
-		/**
-		 * 		if(.equals(ResourceOwnershipMode.Enum.DISABLED.toString()))
-			providerPerResource = new HashMap<ResourceType, ResourceOwner>();
-		else
-			providerPerResource = InputParser.parseProviderPerResource(ib.get(ParameterTypes.RESOURCE_OWNERSHIP_MODE));
-		
-		 */
-		/*Map<ResourceType, ResourceOwner> providerPerResource = new HashMap<>();
+			
+		if(input.startsWith(ResourceOwnershipMode.Enum.FILE_BASED.toString()))
+		{
+			String fileName = input.substring(input.indexOf("(")+1,input.indexOf(","));
+			input = input.substring(input.indexOf(",")+1);
+			int resourceCol = Integer.parseInt(input.substring(0,input.indexOf(",")));
+			input = input.substring(input.indexOf(",")+1);
+			int ownerCol = Integer.parseInt(input.substring(0, input.length()-1));
+			
+		  Map<ResourceType, ResourceOwner> providerPerResource = new HashMap<>();
 			try {
-				for(String s: Files.readAllLines(Paths.get(file)))
+				for(String s: Files.readAllLines(Paths.get(fileName)))
 				{
 					String[] split = s.split(";");
-					ResourceOwner rp = ResourceOwner.newInstance(split[0]);
+					ResourceOwner rp = ResourceOwner.newInstance(split[ownerCol]);
 					for(int i = 1 ; i < split.length; i++)
 						providerPerResource.put(
-								ResourceType.newInstance(split[i]),rp);
+								ResourceType.newInstance(split[resourceCol]),rp);
 				}
 			} catch (IOException e) {
 				e.printStackTrace();
 				throw new Error();
 			}
-		return providerPerResource;*/
+		return x->
+		{
+			return providerPerResource.get(x);
+		};
+		}
 			throw new Error();
 	}
 

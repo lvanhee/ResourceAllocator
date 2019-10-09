@@ -28,7 +28,10 @@ public class InputBuilder {
 		PREFERENCE_MEANING,
 		RESOURCE_DUPLICATE_MODE, //indicates whether resources are unique and how they are distributed
 		RESOURCE_OWNERSHIP_MODE, //indicates how resources are managed
-		OUTPUT_MODE;
+		OUTPUT_MODE,
+		OWNER_DESIRES,
+		OWNER_USER_PREFERENCE;
+		
 
 		public static String toLatexString(ParameterTypes pt) {
 			return Printer.toLatexString(pt.toString());

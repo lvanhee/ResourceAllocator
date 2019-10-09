@@ -27,12 +27,16 @@ import solver.UserResourceInstanceAllocation;
 import model.UserGroup;
 
 public class ProblemInstance {
+	
+	public enum OwnerDesire{AT_LEAST_ONE_INSTANCE_PER_OWNER};
+	
 	private final int minNbUsersPerResource;
 	private final int maxNbUsersPerResource;
 	private final Map<UserResourceInstanceAllocation, Integer> relativePrefPerResourceAllocation;
 	private final Set<UserGroup> userGroups;
 	private final Function<ResourceType, ResourceOwner> providerPerResource;	
 	private final Function<ResourceType, Integer> amountOfInstancesPerResourceType;
+	private final OwnerDesire od;
 	private final OutputType ot;
 		
 	private ProblemInstance(
@@ -43,8 +47,10 @@ public class ProblemInstance {
 			Function<ResourceType, ResourceOwner> providerPerResource,
 			Function<ResourceType, Integer> amountPerResource,
 			UserPreferenceMeaning upm,
-			OutputType ot
+			OutputType ot,
+			OwnerDesire od
 			) {
+		this.od = od;
 		this.ot = ot;
 		this.amountOfInstancesPerResourceType = amountPerResource;
 		this.minNbUsersPerResource = numberOfUsersPerResource;
@@ -86,14 +92,15 @@ public class ProblemInstance {
 			Set<UserGroup> groups, 
 			Function<ResourceType, ResourceOwner> providerPerResource,
 			Function<ResourceType, Integer> amountPerResource,
-			UserPreferenceMeaning upm, OutputType ot)
+			UserPreferenceMeaning upm, OutputType ot, OwnerDesire od)
 	{
 		return new ProblemInstance(
 				baseValues,
 				numberOfUsersPerResource,
 				maxNbUsersPerResource, 
 				groups,
-				providerPerResource, amountPerResource, upm,ot);
+				providerPerResource, amountPerResource, upm,
+				ot, od);
 	}
 	
 	public int getMaxNbUsersPerResource() {
@@ -356,7 +363,9 @@ public class ProblemInstance {
 				providerPerResource, 
 				amountPerResource,
 				upm,
-				OutputType.valueOf(ib.get(ParameterTypes.OUTPUT_MODE)))
+				OutputType.valueOf(ib.get(ParameterTypes.OUTPUT_MODE)),
+				OwnerDesire.valueOf(ib.get(ParameterTypes.OWNER_DESIRES))
+				)
 				;
 		
 	}
@@ -424,5 +433,26 @@ public class ProblemInstance {
 
 	public boolean isDebugPrint() {
 		return true;
+	}
+
+	public Map<ResourceOwner, Set<ResourceInstance>> getOwnershipForInstances(
+			Set<ResourceInstance> instances) {
+		
+		Set<ResourceOwner>owners = instances.stream().map(x->getOwner(x))
+		.collect(Collectors.toSet());
+		Map<ResourceOwner, Set<ResourceInstance>> res = new HashMap<ResourceOwner, Set<ResourceInstance>>();
+		for(ResourceOwner ro: owners)
+			res.put(ro, instances.stream()
+					.filter(x->getOwner(x).equals(ro)).collect(Collectors.toSet()));
+			
+		return res;
+	}
+
+	public OwnerDesire getOwnerAllocationPreferences() {
+		return od;
+	}
+
+	public boolean isMinimizingTheWorkloadOfTheMostLoaded() {
+		return false;
 	}
 }

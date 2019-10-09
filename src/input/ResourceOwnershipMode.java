@@ -2,6 +2,6 @@ package input;
 
 public interface ResourceOwnershipMode {
 	
-	public enum Enum implements ResourceOwnershipMode{DISABLED};
+	public enum Enum implements ResourceOwnershipMode{DISABLED, FILE_BASED};
 
 }

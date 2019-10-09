@@ -16,6 +16,7 @@ import ilog.cplex.IloCplex;
 import ilog.cplex.IloCplex.UnknownObjectException;
 import ilog.cplex.IloCplexModeler;
 import input.ProblemInstance;
+import input.ProblemInstance.OwnerDesire;
 import model.ResourceOwner;
 import model.User;
 import model.UserGroup;
@@ -95,23 +96,22 @@ public class Solver {
 						inF.getAllocations().put(a, worseAllocValue+1);*/
 			}
 			
-			Map<ResourceInstance, IloIntVar> varPerResource = new HashMap<>();
-			for(ResourceInstance r: allAdmissibleResourceInstances)
-			{
-				try {
-					varPerResource.put(r, cplex
-							.boolVar("ActiveResourceVar("+r+")"
-							));
-				} catch (IloException e) {e.printStackTrace();throw new Error();}
-			}
-
+			Map<ResourceInstance, IloIntVar> varPerResource = getVarsPerResource(
+					cplex, allAdmissibleResourceInstances);
+			
+			Map<ResourceOwner, IloIntVar> varPerOwner = getVarsPerOwner(cplex,
+					inF, allAdmissibleAllocations
+					);
+			
 			cplex.addMinimize(
 					Solver.getExpressionToMinimize(
 							cplex, 
+							inF,
 							allAdmissibleAllocations,
 							users,
 							inF.getRelativeInsatisfactionFor(allAdmissibleAllocations),
-							allocToVar));
+							allocToVar, varPerOwner));
+			
 			
 			
 			generateAllocationConstraints(
@@ -120,11 +120,11 @@ public class Solver {
 					allAdmissibleResourceInstances,
 					allocToVar,
 					varPerResource,
+					varPerOwner,
 					resourceMinLiftingJokerVars,
 					inF, maxNbResourcePerOwner
 					);
 			
-			generateHardAllocationsConstraints(cplex, allocToVar, inF.getHardConstraints());
 	
 			cplex.exportModel("mipex1.lp");
 	
@@ -133,7 +133,7 @@ public class Solver {
 			System.out.println("Solution status = " + cplex.getStatus());
 			
 			if(inF.isDebugPrint())
-				debugPrint(cplex, allocToVar, varPerResource);
+				debugPrint(cplex, allocToVar, varPerResource,varPerOwner);
 			Set<UserResourceInstanceAllocation>s=
 					processCplexResults(cplex, allocToVar);
 			
@@ -153,9 +153,43 @@ public class Solver {
 	}
 	
 
+	private static Map<ResourceOwner, IloIntVar> getVarsPerOwner(IloCplex cplex, 
+			ProblemInstance inF,
+			Set<UserResourceInstanceAllocation> allAdmissibleAllocations) throws IloException {
+		Map<ResourceOwner, IloIntVar>res = new HashMap<>();
+		
+		Set<ResourceOwner> ro = allAdmissibleAllocations.stream()
+		.map(x->inF.getOwner(x.getResource()))
+		.collect(Collectors.toSet());
+		
+		for(ResourceOwner r: ro)
+			res.put(r, cplex
+				.boolVar("ResourceOwnerHasAtLeastOneResourceTaken("+r+")")
+				);
+		return res;
+	}
+
+
+	private static Map<ResourceInstance, IloIntVar> getVarsPerResource(
+			IloCplexModeler cplex,
+			Set<ResourceInstance> allAdmissibleResourceInstances) {
+		Map<ResourceInstance, IloIntVar>res = new HashMap<>();
+		for(ResourceInstance r: allAdmissibleResourceInstances)
+		{
+			try {
+				res.put(r, cplex
+						.boolVar("ActiveResourceVar("+r+")"
+						));
+			} catch (IloException e) {e.printStackTrace();throw new Error();}
+		}
+		return res;
+	}
+
+
 	private static void debugPrint(IloCplex cplex,
 			Map<UserResourceInstanceAllocation, IloIntVar> allocToVar,
-			Map<ResourceInstance, IloIntVar> varPerResource) throws UnknownObjectException, IloException {
+			Map<ResourceInstance, IloIntVar> varPerResource,
+			Map<ResourceOwner, IloIntVar> varPerOwner) throws UnknownObjectException, IloException {
 		System.out.println("Debug print");
 		
 		for(UserResourceInstanceAllocation URIAlloc: allocToVar.keySet())
@@ -163,6 +197,9 @@ public class Solver {
 		
 		for(ResourceInstance ri: varPerResource.keySet())
 			System.out.println(ri+" "+cplex.getValue(varPerResource.get(ri)));
+		
+		for(ResourceOwner ro:varPerOwner.keySet())
+			System.out.println(ro+" "+cplex.getValue(varPerOwner.get(ro)));
 		
 		System.out.println("Debug print end");
 	}
@@ -208,7 +245,7 @@ public class Solver {
 		checkAllocation(optimal,input);
 		
 		Printer.getHappinessStatistics(
-				optimal, input.getAllocationsPerResourceInstance(), input.getOutputType());
+				optimal, input, input.getAllocationsPerResourceInstance(), input.getOutputType());
 		Printer.processResults(optimal, input);	
 		
 		SatisfactionMeasure sm = SatisfactionMeasure.newInstance(optimal, input);
@@ -274,6 +311,7 @@ public class Solver {
 		
 		Optional<Set<UserResourceInstanceAllocation>> res = Optional.empty();
 		
+		if(input.isMinimizingTheWorkloadOfTheMostLoaded())
 		while(min < max)
 		{
 			int i = (max + min) / 2;
@@ -296,7 +334,7 @@ public class Solver {
 		
 		return Solver.optimizeAccordingToMaxInsatisfaction(
 				worseInsatisfactionToMeet,
-				input,min).get();
+				input,max).get();
 	}
 
 
@@ -369,6 +407,7 @@ public class Solver {
 			SortedSet<ResourceInstance> allAdmissibleResources,
 			Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc,
 			Map<ResourceInstance, IloIntVar> allocatedResourceVar,
+			Map<ResourceOwner, IloIntVar> varPerActiveOwner, 
 			Map<ResourceInstance, IloIntVar> allocationJoker,
 			ProblemInstance inF,
 			int maxNbResourcePerOwner
@@ -402,6 +441,7 @@ public class Solver {
 					"EachUserIsGivenExactlyOneResource("+pl+")");
 		}
 
+		
 		allocateEachResourceInstanceAtMostKTimes(cplex, 
 				inF, 
 				varPerAlloc, 
@@ -412,6 +452,11 @@ public class Solver {
 		forceResourcesToBeAllocatedAccordingToUserResourceAllocations(
 				cplex,
 				allAdmissibleAllocations, allocatedResourceVar, varPerAlloc);
+		
+		
+		forceOwnersToBeInactiveActiveIfAllOfTheirResourceAreInactive(
+				cplex, inF,
+				allAdmissibleAllocations, allocatedResourceVar, varPerActiveOwner);
 		
 		for(ResourceInstance resource: allAdmissibleResources)
 		{
@@ -537,6 +582,34 @@ public class Solver {
 			}
 			cplex.addEq(total, inF.numberOfUsersPerResource, "FullAllocationOfResource("+resource+")");
 		}*/
+		
+		generateHardAllocationsConstraints(cplex, varPerAlloc, inF.getHardConstraints());
+
+		
+	}
+
+
+	private static void forceOwnersToBeInactiveActiveIfAllOfTheirResourceAreInactive(
+			IloCplex cplex, ProblemInstance inF,
+			Set<UserResourceInstanceAllocation> allAdmissibleAllocations,
+			Map<ResourceInstance, IloIntVar> allocatedResourceVar, 
+			Map<ResourceOwner, IloIntVar> varPerActiveOwner) throws IloException {
+		Set<ResourceInstance>instances = allAdmissibleAllocations.stream()
+				.map(x->x.getResource())
+				.collect(Collectors.toSet());
+		Map<ResourceOwner, Set<ResourceInstance>> activeInstances = 
+				inF.getOwnershipForInstances(instances);
+		
+		for(ResourceOwner ro: activeInstances.keySet())
+		{
+			IloNumExpr sumAllocatedResourceInstances = cplex.constant(0);
+			for(ResourceInstance ri: activeInstances.get(ro))
+			{
+				sumAllocatedResourceInstances = cplex.sum(
+						sumAllocatedResourceInstances, allocatedResourceVar.get(ri));
+			}
+			cplex.addLe(varPerActiveOwner.get(ro), sumAllocatedResourceInstances);
+		}
 		
 		
 	}
@@ -675,10 +748,12 @@ public class Solver {
 
 	public static IloNumExpr getExpressionToMinimize(
 			IloCplex cplex, 
+			ProblemInstance inF, 
 			Set<UserResourceInstanceAllocation> allowedAllocations, 
 			Set<User> users,
 			Map<UserResourceInstanceAllocation, Integer> prefsPerAllocation,
-			Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc
+			Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc, 
+			Map<ResourceOwner, IloIntVar> varPerOwner
 			) throws IloException {
 		IloNumExpr exprToOptimize =  cplex.constant(0);
 		for(UserResourceInstanceAllocation a:allowedAllocations)
@@ -691,7 +766,7 @@ public class Solver {
 									varPerAlloc.get(a)));
 		}
 		IloNumExpr[] weightedAllocations = new IloIntExpr[prefsPerAllocation.size()];
-	
+
 		int i = 0;
 		for(UserResourceInstanceAllocation a: varPerAlloc.keySet())
 		{
@@ -699,6 +774,20 @@ public class Solver {
 					varPerAlloc.get(a),
 					prefsPerAllocation.get(a));
 			i++;
+		}
+
+		if(inF.getOwnerAllocationPreferences()
+				.equals(OwnerDesire.AT_LEAST_ONE_INSTANCE_PER_OWNER))
+		{
+			exprToOptimize = cplex.prod(varPerOwner.size()+1,
+					exprToOptimize);
+			
+			IloNumExpr ownerInterest = cplex.constant(0);
+			
+			for(ResourceOwner ro:varPerOwner.keySet())
+				ownerInterest = cplex.sum(cplex.prod(-1,varPerOwner.get(ro)), ownerInterest);
+			
+			exprToOptimize = cplex.sum(ownerInterest, exprToOptimize);	
 		}
 		return exprToOptimize;
 	}

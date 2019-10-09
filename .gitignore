@@ -3,7 +3,7 @@
 /report.tex
 *.pdf
 alloc*
-*.lp
+mipex1.lp
 *.aux
 *.log
 *.gz

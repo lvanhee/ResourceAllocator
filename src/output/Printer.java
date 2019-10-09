@@ -4,6 +4,8 @@ import java.awt.Color;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.security.acl.Owner;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -20,6 +22,7 @@ import input.InputBuilder;
 import input.InputBuilder.ParameterTypes;
 import input.ProblemInstance.OutputType;
 import input.ProblemInstance;
+import model.ResourceOwner;
 import model.ResourceType;
 import model.User;
 import model.UserResourceTypeAllocation;
@@ -30,8 +33,9 @@ import model.UserGroup;
 public class Printer {
 
 	public static String getHappinessStatistics(
+			
 			Set<UserResourceInstanceAllocation> s, 
-			Map<UserResourceInstanceAllocation, Integer> prefsPerAllocation,
+			ProblemInstance inF, Map<UserResourceInstanceAllocation, Integer> prefsPerAllocation,
 			OutputType ot
 			) {
 		/*for(Allocation a:s)
@@ -41,7 +45,7 @@ public class Printer {
 		if(ot.equals(OutputType.LATEX_REPORT))
 		{
 			res+="\\subsection{Happiness Statistics} \n";
-			res+="\\subsubsection{General Statistics} \n";
+			res+="\\subsubsection{User Happiness Statistics} \n";
 		}
 		else if(ot.equals(OutputType.CONSOLE_PRINT)) res +="\n\nGeneral stats:";
 		else throw new Error();
@@ -79,7 +83,47 @@ public class Printer {
 					"\\end{center}";
 		
 		
+		res+="\\subsubsection{Owner Happiness Statistics} \n";
+		res+="\n Number of allocated users per owner\\\\" + 
+				"\\begin{center}" + 
+				"\\begin{tabular}{|c|c|}\n" + 
+				"	\\hline\n" + 
+				"	Number of allocated instances & Number of owners\\\\\n" + 
+				"	\\hline";
 		
+		Map<ResourceOwner, Integer> numberPerOwner = inF.getAllResourceOwners().stream()
+				.collect(Collectors.toMap(Function.identity(), x->0));
+		for(UserResourceInstanceAllocation ua: s)
+			if(numberPerOwner.containsKey(inF.getOwner(ua.getResource())))
+				numberPerOwner.put(inF.getOwner(ua.getResource()),
+						numberPerOwner.get(inF.getOwner(ua.getResource()))+1);
+			else numberPerOwner.put(inF.getOwner(ua.getResource()), 1);
+		Collection<Integer> allocNum = numberPerOwner.values();
+		int ownerWithMaxAllocations =
+				allocNum.stream().max(
+						(x,y) -> 
+						{
+							return Integer.compare(x, y);
+						}).get();
+						
+		
+		for(int i = 0; i <= ownerWithMaxAllocations; i++)
+		{
+			final int count = i;
+			long nbOfOwnersWithThatNumberOfProjects=
+					numberPerOwner.keySet().stream()
+					.filter(x->numberPerOwner.get(x).equals(count)).count();
+			if(ot.equals(OutputType.LATEX_REPORT))
+				res+=i+"&"+nbOfOwnersWithThatNumberOfProjects+"\\\\\n";
+			else if(ot.equals(OutputType.CONSOLE_PRINT))
+				res+="# of rank "+(i)+"->"+nbOfOwnersWithThatNumberOfProjects;
+			else throw new Error();
+		}
+		
+		if(ot.equals(OutputType.LATEX_REPORT))
+			res+="	\\hline\n" + 
+					"\\end{tabular}\n" + 
+					"\\end{center}";
 		
 		return res;
 	}
@@ -224,8 +268,8 @@ public class Printer {
 		
 		res+=getStatisticsSection(inF, allocations);
 		
+		res+=showGraphs(inF,allocations);
 		
-		res+=showGraph(inF, allocations);
 		
 		
 		res+="\n \\end{document} \n";
@@ -238,7 +282,62 @@ public class Printer {
 		}
 	}
 
-	private static String showGraph(ProblemInstance inF, Set<UserResourceInstanceAllocation> allocations) {
+	private static String showGraphs(ProblemInstance inF, Set<UserResourceInstanceAllocation> allocations) {
+		String res= showPreferenceRank(inF, allocations)+"\n";
+		res +=showOwnerInterest(inF, allocations);
+		return res;
+		
+	}
+
+	private static String showOwnerInterest(ProblemInstance inF, Set<UserResourceInstanceAllocation> allocations) {
+		String res ="";
+		//res+="\\section{Allocation Graphs}\n";
+		
+		res+="\\begin{center}\n";
+		int worseInsatisfaction = getWorseInsatisfaction(inF, allocations);
+		for(int i = 0; i < worseInsatisfaction +1 ; i++)
+		{
+			Set<UserResourceInstanceAllocation> allocs = inF.getAllocationsFilteredBy(i);
+			Map<User, Map<ResourceOwner, Integer>> m = new HashMap<User, Map<ResourceOwner,Integer>>();
+			for(User u: inF.getAllUsers())
+				m.put(u, new HashMap<ResourceOwner, Integer>());
+			
+			for(UserResourceInstanceAllocation ua: allocs)
+				if(m.get(ua.getUser()).containsKey(inF.getOwner(ua.getResource())))
+					m.get(ua.getUser()).put(inF.getOwner(ua.getResource()), 
+							m.get(ua.getUser()).get(inF.getOwner(ua.getResource()))+1 
+							);
+				else m.get(ua.getUser()).put(inF.getOwner(ua.getResource()), 1);
+
+			res+="\\newpage\\textbf{User-owner interest} "+i;
+			res +=" \\digraph[height=0.65\\paperheight]{uoi"+i+"}{ rankdir=LR;ranksep=25;\n";
+
+
+			for(User u: inF.getAllUsers())
+			{
+				res+=u.toString()+"[shape=diamond, penwidth=3]\n";
+				
+				for(ResourceOwner ro: m.get(u).keySet())
+					if(m.get(u).get(ro)>0)
+					{							
+					String thickness="penwidth="+m.get(u).get(ro);
+					res+=
+							u+"->"+"\""+ro.toString().replaceAll("-", "")+"\""
+							+"["+thickness+"]"
+							+"\n";
+					}
+			}
+		
+	
+		res+="}\n  ";
+		}
+		
+		res+="\n\\end{center}\n";
+
+		return res;
+	}
+
+	private static String showPreferenceRank(ProblemInstance inF, Set<UserResourceInstanceAllocation> allocations) {
 		String res ="";
 		//res+="\\section{Allocation Graphs}\n";
 		
@@ -256,7 +355,7 @@ public class Printer {
 					.filter(x->allocs.contains(x))
 					.map(x->x.getUser()).collect(Collectors.toSet()))
 			{
-				res+=u.toString()+"[shape=diamond, penwidth=3]\n";
+				res+="\""+u.toString()+"\""+"[shape=diamond, penwidth=3]\n";
 			}
 			
 			for(UserResourceInstanceAllocation al:allocs)
@@ -278,8 +377,8 @@ public class Printer {
 					String thickness="";
 					if(actualMatch)
 						thickness=",penwidth=3";
-					res+=al.getUser()+"->"+al.getResource().getResourceType()
-							+"[color="+colorString+thickness+"]"
+					res+=al.getUser()+"->"+"\""+al.getResource().getResourceType()
+							+"\""+"[color="+colorString+thickness+"]"
 							+"\n";
 					m.get(al.getUser()).add(al.getResource().getResourceType());
 					}
@@ -298,7 +397,7 @@ public class Printer {
 	private static String getStatisticsSection(ProblemInstance inF, 
 			Set<UserResourceInstanceAllocation> allocations) {
 		String res = "\\section{General Statistics}\n ";
-		res+=getHappinessStatistics(allocations, inF.getAllocationsPerResourceInstance(), inF.getOutputType());
+		res+=getHappinessStatistics(allocations, inF,inF.getAllocationsPerResourceInstance(), inF.getOutputType());
 		
 		res += "\\subsection{Degree of Interest per Resource}\n ";
 		res+=getHypeSection(inF, allocations);
@@ -460,6 +559,7 @@ public class Printer {
 			{
 				
 				res+="Resource "+s.getResourceType()+", instance \\#"+s.getInstanceNumber()
+				+" offered by "+inF.getOwner(s)
 				+" is allocated to:\\newline \n";
 				
 				for(UserGroup ug: satisfactionPerGroup.keySet())

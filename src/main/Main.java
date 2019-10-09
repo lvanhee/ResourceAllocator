@@ -81,7 +81,7 @@ public class Main {
 	 * allocated for rank n and seek to minimize p(n-1).
 	 * Proceed like this until setting all the values.
 	 *  
-	 * 
+	 * PREFERENCE_FILE:/export/home/vanhee/Téléchargements/file_of_preferences.txt MIN_NB_USER_PER_RESOURCE:2 MAX_NB_USER_PER_RESOURCE:2 RESOURCE_DUPLICATE_MODE:FILE_BASED("/export/home/vanhee/Téléchargements/all_projects.csv",0,4) RESOURCE_OWNERSHIP_MODE:FILE_BASED("/export/home/vanhee/Téléchargements/all_projects.csv",0,3) PREFERENCE_MEANING:PERSONAL_INSATISFACTION OWNER_DESIRES:AT_LEAST_ONE_INSTANCE_PER_OWNER OUTPUT_MODE:LATEX_REPORT
 	 *  
 	 * @param args
 	 */	
