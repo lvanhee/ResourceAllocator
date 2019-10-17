@@ -258,7 +258,8 @@ public class Printer {
 		return numberOfDesirePerPreferenceLevelPerProject;
 	}
 
-	private static void printLatexReport(String[] input, ProblemInstance inF, Set<UserResourceInstanceAllocation> allocations) {
+	private static void printLatexReport(String[] input, 
+			ProblemInstance inF, Set<UserResourceInstanceAllocation> allocations) {
 		
 		String res = getPreamble();
 		

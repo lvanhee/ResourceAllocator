@@ -12,8 +12,7 @@ public class Main {
 	 * 
 	 * 
 	 * Command line example:
-	 * PREFERENCE_FILE:input.csv MIN_NB_USER_PER_RESOURCE:4 MAX_NB_USER_PER_RESOURCE:4 RESOURCE_PER_OWNER:projects_by_tutor.csv AMOUNT_PER_RESOURCE:nb_proj.csv PREFERENCE_MEANING:PERSONAL_INSATISFACTION
-	 *  
+	 * PREFERENCE_FILE:/export/home/vanhee/Téléchargements/file_of_preferences.txt MIN_NB_USER_PER_RESOURCE:2 MAX_NB_USER_PER_RESOURCE:2 RESOURCE_DUPLICATE_MODE:FILE_BASED("/export/home/vanhee/Téléchargements/all_projects.csv",0,4) RESOURCE_OWNERSHIP_MODE:FILE_BASED("/export/home/vanhee/Téléchargements/all_projects.csv",0,3) PREFERENCE_MEANING:PERSONAL_INSATISFACTION OWNER_DESIRES:AT_LEAST_ONE_INSTANCE_PER_OWNER OUTPUT_MODE:LATEX_REPORT	 *  
 	 * Java parameters example:
 	 * -ea -Djava.library.path=/export/home/vanhee/Documents/software/cplex/cplex_studio/cplex/bin/x86-64_linux
 	 *  
@@ -88,17 +87,10 @@ public class Main {
 	public static void main(String args[])
 	{
 		ProblemInstance input = ProblemInstance.newInstance(args);
-		
-		
-		System.out.println();
-		
-		Set<UserResourceInstanceAllocation> res = Solver.optimize(input);
+				
+		Set<UserResourceInstanceAllocation> res = Solver.getOptimalAllocation(input);
 		
 		Printer.displayResults(args,input,res);
-
-//		Printer.printOutput(res, input.getAllocationsPerResourceInstance());
-	
-		Printer.processResults(res, input);		
 	}
 
 	

@@ -190,6 +190,7 @@ public class Solver {
 			Map<UserResourceInstanceAllocation, IloIntVar> allocToVar,
 			Map<ResourceInstance, IloIntVar> varPerResource,
 			Map<ResourceOwner, IloIntVar> varPerOwner) throws UnknownObjectException, IloException {
+		
 		System.out.println("Debug print");
 		
 		for(UserResourceInstanceAllocation URIAlloc: allocToVar.keySet())
@@ -237,27 +238,24 @@ public class Solver {
 	
 	
 
-	public static Set<UserResourceInstanceAllocation> optimize(ProblemInstance input) {
+	public static Set<UserResourceInstanceAllocation> getOptimalAllocation(ProblemInstance input) {
 		
-		Set<UserResourceInstanceAllocation> optimal = 
-				optimalAllocationMinimizingUserInsatisfaction(input);
+		int maximumInsatisfaction = 
+				SatisfactionMeasure.newInstance(
+						findAllocationWithMinimalWorseInsatisfaction(input),
+						input).getWorseAllocationValue();
 		
-		checkAllocation(optimal,input);
-		
-		Printer.getHappinessStatistics(
-				optimal, input, input.getAllocationsPerResourceInstance(), input.getOutputType());
-		Printer.processResults(optimal, input);	
-		
-		SatisfactionMeasure sm = SatisfactionMeasure.newInstance(optimal, input);
-		
-		optimalAllocationMatchingSatisfactionMeasureAndMinimizingResourceOwnerLoad(
+		return getOptimalAllocationMatchingSatisfactionMeasureAndMinimizingResourceOwnerLoad(
 				input,
-				sm);
-		
-		return optimal;
+				maximumInsatisfaction);
 	
 	}
 
+	/**
+	 * Just a safety check
+	 * @param optimal
+	 * @param input
+	 */
 	private static void checkAllocation(
 			Set<UserResourceInstanceAllocation> optimal,
 			ProblemInstance input) {
@@ -275,7 +273,13 @@ public class Solver {
 	}
 
 
-	private static Set<UserResourceInstanceAllocation> optimalAllocationMinimizingUserInsatisfaction(ProblemInstance input)
+	/**
+	 * Find a feasible allocation, with a maximal level of insatisfaction of minimum value
+	 * This allocation is not necessarily optimal.
+	 * @param input
+	 * @return
+	 */
+	private static Set<UserResourceInstanceAllocation> findAllocationWithMinimalWorseInsatisfaction(ProblemInstance input)
 	{
 		Optional<Set<UserResourceInstanceAllocation>> res = Optional.empty();
 
@@ -294,47 +298,50 @@ public class Solver {
 	}
 
 
-	private static Set<UserResourceInstanceAllocation> optimalAllocationMatchingSatisfactionMeasureAndMinimizingResourceOwnerLoad(ProblemInstance input,
-			SatisfactionMeasure smToReach) {
+	/**
+	 * Computes the optimal allocation, using mathematical trickery for the reward function.
+	 * Tries to minimize the maximum number of resource allocated for each owner 
+	 * @param input
+	 * @param worseInsatisfactionConsidered
+	 * @return
+	 */
+	private static Set<UserResourceInstanceAllocation> getOptimalAllocationMatchingSatisfactionMeasureAndMinimizingResourceOwnerLoad(ProblemInstance input,
+			int worseInsatisfactionConsidered) {	
+	/*	int minAllocationPerOwner = 1;
+		int maxAllocationPerOwner = 1;
 		
-		
-		int worseInsatisfactionToMeet = smToReach.getWorseAllocationValue();
-			
-		int min = 1;
-		int max = 1;
-		
-		while(!matchesScore(worseInsatisfactionToMeet, max, input))
+		while(!matchesScore(worseInsatisfactionConsidered, maxAllocationPerOwner, input))
 		{
-			min = max;
-			max*=2;
+			minAllocationPerOwner = maxAllocationPerOwner;
+			maxAllocationPerOwner*=2;
 		}
 		
 		Optional<Set<UserResourceInstanceAllocation>> res = Optional.empty();
 		
 		if(input.isMinimizingTheWorkloadOfTheMostLoaded())
-		while(min < max)
+		while(minAllocationPerOwner < maxAllocationPerOwner)
 		{
-			int i = (max + min) / 2;
+			int i = (maxAllocationPerOwner + minAllocationPerOwner) / 2;
 			System.out.println(
 					"Trying to find an allocation with a maximum "
-					+ "least satisfaction of rank:"+worseInsatisfactionToMeet+
+					+ "least satisfaction of rank:"+worseInsatisfactionConsidered+
 					" and a maximum number of allocations per owner of:"
 					+i
 					);
 			
 			res= Solver.optimizeAccordingToMaxInsatisfaction(
-					worseInsatisfactionToMeet,
+					worseInsatisfactionConsidered,
 					input,i);
 			
 			if(res.isPresent())
-				max = i;
+				maxAllocationPerOwner = i;
 			else
-				min = i+1;
-		}
+				minAllocationPerOwner = i+1;
+		}*/
 		
 		return Solver.optimizeAccordingToMaxInsatisfaction(
-				worseInsatisfactionToMeet,
-				input,max).get();
+				worseInsatisfactionConsidered,
+				input,Integer.MAX_VALUE).get();
 	}
 
 
