@@ -28,7 +28,7 @@ import model.UserGroup;
 
 public class ProblemInstance {
 	
-	public enum OwnerDesire{AT_LEAST_ONE_INSTANCE_PER_OWNER};
+	public enum OwnerDesire{AT_LEAST_ONE_INSTANCE_PER_OWNER, NO_DESIRE};
 	
 	private final int minNbUsersPerResource;
 	private final int maxNbUsersPerResource;
@@ -288,7 +288,9 @@ public class ProblemInstance {
 	}
 
 	public ResourceOwner getOwner(ResourceType r) {
-		return providerPerResource.apply(r);
+		ResourceOwner res =providerPerResource.apply(r);
+		assert(res!=null);
+		return res;
 	}
 
 	
@@ -353,6 +355,9 @@ public class ProblemInstance {
 				InputParser.parseAmountPerResource(ib.get(ParameterTypes.RESOURCE_DUPLICATE_MODE));
 		UserPreferenceMeaning upm = InputParser.parseUserPreferenceMeaning(ib.get(ParameterTypes.PREFERENCE_MEANING));
 		
+		OwnerDesire desire = OwnerDesire.NO_DESIRE;
+		if(ib.has(ParameterTypes.OWNER_DESIRES))
+			desire = OwnerDesire.valueOf(ib.get(ParameterTypes.OWNER_DESIRES));
 		
 				
 		return newInstance(
@@ -364,7 +369,7 @@ public class ProblemInstance {
 				amountPerResource,
 				upm,
 				OutputType.valueOf(ib.get(ParameterTypes.OUTPUT_MODE)),
-				OwnerDesire.valueOf(ib.get(ParameterTypes.OWNER_DESIRES))
+				desire
 				)
 				;
 		

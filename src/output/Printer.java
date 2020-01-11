@@ -310,7 +310,7 @@ public class Printer {
 							);
 				else m.get(ua.getUser()).put(inF.getOwner(ua.getResource()), 1);
 
-			res+="\\newpage\\textbf{User-owner interest} "+i;
+			res+="\\newpage\\textbf{User$\\rightarrow$owner interest} "+i+" (thickness = \\#resources)\n\n";
 			res +=" \\digraph[height=0.65\\paperheight]{uoi"+i+"}{ rankdir=LR;ranksep=25;\n";
 
 
@@ -346,7 +346,7 @@ public class Printer {
 		int worseInsatisfaction = getWorseInsatisfaction(inF, allocations);
 		for(int i = 0; i < worseInsatisfaction +1 ; i++)
 		{
-			res+="\\newpage\\textbf{Allocations preference rank} "+i;
+			res+="\\newpage\\textbf{User$\\rightarrow$Resource with max insatisfaction of} "+i+" (color = rank) \n\n";
 			Map<User, Set<ResourceType>> m = new HashMap<User, Set<ResourceType>>();
 
 			res +=" \\digraph[height=0.65\\paperheight]{alloc"+i+"}{ rankdir=LR;ranksep=25;\n";
@@ -565,7 +565,7 @@ public class Printer {
 				
 				for(UserGroup ug: satisfactionPerGroup.keySet())
 					res+="---the group "+ug.getUsers()
-					+", satisfaction of "+satisfactionPerGroup.get(ug)+"\\newline";
+					+", insatisfaction of "+satisfactionPerGroup.get(ug)+"\\newline";
 				
 				res = res.substring(0, res.lastIndexOf("\\newline"))+".\\\\\n";
 			}

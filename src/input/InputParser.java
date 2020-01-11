@@ -144,11 +144,9 @@ public class InputParser {
 			
 		if(input.startsWith(ResourceOwnershipMode.Enum.FILE_BASED.toString()))
 		{
-			String fileName = input.substring(input.indexOf("(")+1,input.indexOf(","));
-			input = input.substring(input.indexOf(",")+1);
-			int resourceCol = Integer.parseInt(input.substring(0,input.indexOf(",")));
-			input = input.substring(input.indexOf(",")+1);
-			int ownerCol = Integer.parseInt(input.substring(0, input.length()-1));
+			String fileName = input.substring(input.indexOf("(")+1,input.indexOf(")"));
+			input = input.substring(input.indexOf(")")+1);			
+			int ownerCol = 0;
 			
 		  Map<ResourceType, ResourceOwner> providerPerResource = new HashMap<>();
 			try {
@@ -157,8 +155,9 @@ public class InputParser {
 					String[] split = s.split(";");
 					ResourceOwner rp = ResourceOwner.newInstance(split[ownerCol]);
 					for(int i = 1 ; i < split.length; i++)
+						if(i!=ownerCol)
 						providerPerResource.put(
-								ResourceType.newInstance(split[resourceCol]),rp);
+								ResourceType.newInstance(split[i]),rp);
 				}
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -166,6 +165,7 @@ public class InputParser {
 			}
 		return x->
 		{
+			assert(providerPerResource.containsKey(x));
 			return providerPerResource.get(x);
 		};
 		}
