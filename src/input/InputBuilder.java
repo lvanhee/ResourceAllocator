@@ -30,7 +30,8 @@ public class InputBuilder {
 		RESOURCE_OWNERSHIP_MODE, //indicates how resources are managed
 		OUTPUT_MODE,
 		OWNER_DESIRES,
-		OWNER_USER_PREFERENCE;
+		OWNER_USER_PREFERENCE,
+		CONSTRAINTS;
 		
 
 		public static String toLatexString(ParameterTypes pt) {

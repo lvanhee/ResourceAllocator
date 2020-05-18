@@ -245,9 +245,11 @@ public class Solver {
 						findAllocationWithMinimalWorseInsatisfaction(input),
 						input).getWorseAllocationValue();
 		
-		return getOptimalAllocationMatchingSatisfactionMeasureAndMinimizingResourceOwnerLoad(
+		return getOptimalAllocationMatchingSatisfactionMeasureAndMinimizingResourceOwnerLoad
+				(
 				input,
-				maximumInsatisfaction);
+				maximumInsatisfaction
+				);
 	
 	}
 
@@ -291,7 +293,9 @@ public class Solver {
 
 			res= Solver.optimizeAccordingToMaxInsatisfaction(
 					i,
-					input,Integer.MAX_VALUE);
+					input,
+					Integer.MAX_VALUE
+					);
 		}
 
 		return res.get();
@@ -429,25 +433,10 @@ public class Solver {
 		
 		matchAllocationsOfGroups(cplex, inF, varPerAlloc);
 		
+		
 		Set<UserResourceInstanceAllocation>validAllocations = varPerAlloc.keySet();
-		for(User pl: inF.getAllUsers())
-		{
-			IloNumExpr oneResourcePerUser = 
-					cplex.constant(0);
-			for(UserResourceInstanceAllocation al: inF.getResouceInstanceAllocationsFor(pl))
-			{
-				if(!validAllocations.contains(al))continue;
-				oneResourcePerUser = 
-						cplex.sum(
-						oneResourcePerUser,
-						varPerAlloc.get(al));
-			}
-			cplex.addEq(
-					1,
-					oneResourcePerUser,
-					"EachUserIsGivenExactlyOneResource("+pl+")");
-		}
-
+		
+		allocateExactlyOneResourcePerUser(cplex,inF, validAllocations, varPerAlloc);
 		
 		allocateEachResourceInstanceAtMostKTimes(cplex, 
 				inF, 
@@ -493,7 +482,6 @@ public class Solver {
 					0, 
 					"EachNonAllocatedResourceIsAllocatedAtMost0TimesUnlessTheJokerIsUsed("+resource+")");
 		}
-		
 		
 		forceAllocatedResourcesToBeAllocatedKTimes(
 				cplex,
@@ -593,6 +581,27 @@ public class Solver {
 		generateHardAllocationsConstraints(cplex, varPerAlloc, inF.getHardConstraints());
 
 		
+	}
+
+
+	private static void allocateExactlyOneResourcePerUser(IloCplex cplex, ProblemInstance inF, Set<UserResourceInstanceAllocation> validAllocations, Map<UserResourceInstanceAllocation, IloIntVar> varPerAlloc) throws IloException {
+		for(User pl: inF.getAllUsers())
+		{
+			IloNumExpr oneResourcePerUser = 
+					cplex.constant(0);
+			for(UserResourceInstanceAllocation al: inF.getResouceInstanceAllocationsFor(pl))
+			{
+				if(!validAllocations.contains(al))continue;
+				oneResourcePerUser = 
+						cplex.sum(
+						oneResourcePerUser,
+						varPerAlloc.get(al));
+			}
+			cplex.addEq(
+					1,
+					oneResourcePerUser,
+					"EachUserIsGivenExactlyOneResource("+pl+")");
+		}
 	}
 
 
